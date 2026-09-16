@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "event_id": "35947b2a-c9d3-428b-beba-607cd9ab3c48",
+  "operation_id": "b7e16831-2d62-45da-92e6-324a2ad61cb6",
+  "order_id": "942c0e14-d362-42a9-a16c-a35d0e78eb34",
+  "result": "ITEMS_UNAVAILABLE",
+  "occurred_at": "2026-09-17T09:00:01Z",
+  "items": [
+    {
+      "order_line_id": "1b4f1d4a-0e5b-421d-ab75-376db9a4fcab",
+      "product_id": "store-product-1042",
+      "requested_quantity": 2,
+      "available_quantity": 0
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schema_version": "1.0",
+  "event_id": "82b596f2-1209-4f7d-a57e-f23fc4b1be61",
+  "operation_id": "b7e16831-2d62-45da-92e6-324a2ad61cb6",
+  "order_id": "942c0e14-d362-42a9-a16c-a35d0e78eb34",
+  "result": "COMMITTED",
+  "occurred_at": "2026-09-17T09:00:01Z"
+}

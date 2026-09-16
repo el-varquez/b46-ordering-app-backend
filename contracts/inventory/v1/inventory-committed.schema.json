@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://b46.local/contracts/inventory/v1/inventory-committed.schema.json",
+  "title": "InventoryCommitted",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "operation_id", "order_id", "result", "occurred_at"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "event_id": { "type": "string", "format": "uuid" },
+    "operation_id": { "type": "string", "format": "uuid" },
+    "order_id": { "type": "string", "format": "uuid" },
+    "result": { "type": "string", "const": "COMMITTED" },
+    "occurred_at": { "type": "string", "format": "date-time" }
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "B46 Ordering API",
+    "version": "0.1.0",
+    "description": "Phase 1 contract baseline for the B46 Ordering backend. Backend processing states are intentionally absent from customer contracts."
+  },
+  "servers": [{ "url": "http://localhost:8080" }],
+  "paths": {
+    "/v1/health/live": {
+      "get": {
+        "operationId": "getLiveness",
+        "responses": {
+          "200": {
+            "description": "The Ordering process is alive.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
+          }
+        }
+      }
+    },
+    "/v1/health/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "responses": {
+          "200": {
+            "description": "PostgreSQL is reachable and the required schema is applied.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
+          },
+          "503": {
+            "description": "The service is not ready.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Role": { "type": "string", "enum": ["CUSTOMER", "CASHIER", "ADMIN"] },
+      "OrderStatus": { "type": "string", "enum": ["SUBMITTED", "CONFIRMED", "REJECTED"] },
+      "FulfillmentStatus": { "type": "string", "enum": ["PREPARING", "DELIVERING", "DELIVERED"] },
+      "CustomerFulfillmentLabel": {
+        "type": "string",
+        "enum": ["Preparing", "On the way", "Delivered"],
+        "description": "Customer-facing labels. DELIVERING is presented as On the way."
+      },
+      "ResponseMeta": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["request_id"],
+        "properties": { "request_id": { "type": "string", "minLength": 1, "maxLength": 128 } }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["service", "status"],
+            "properties": {
+              "service": { "type": "string", "const": "ordering" },
+              "status": { "type": "string", "enum": ["ok", "ready"] }
+            }
+          },
+          "meta": { "$ref": "#/components/schemas/ResponseMeta" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": ["INVALID_REQUEST", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "ITEMS_UNAVAILABLE", "SERVICE_UNAVAILABLE", "INTERNAL_ERROR"]
+          },
+          "message": { "type": "string", "minLength": 1 }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["error", "meta"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "meta": { "$ref": "#/components/schemas/ResponseMeta" }
+        }
+      }
+    }
+  }
+}

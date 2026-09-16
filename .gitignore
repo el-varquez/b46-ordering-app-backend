@@ -8,6 +8,10 @@ coverage/
 dist/
 tmp/
 
+.cache/
+*.coverprofile
+coverage.html
+
 *.log
 *.out
 *.test

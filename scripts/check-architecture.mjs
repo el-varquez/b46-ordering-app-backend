@@ -59,9 +59,12 @@ const goModuleFiles = allFiles.filter((file) => file.endsWith(`${sep}go.mod`));
 
 const parseRequires = (text) => {
   const names = new Set();
-  for (const match of text.matchAll(/^require\s+([^\s(]+)\s+v\S+/gm)) names.add(match[1]);
+  for (const match of text.matchAll(/^require\s+([^\s(]+)\s+v\S+(.*)$/gm)) {
+    if (!match[2].includes('// indirect')) names.add(match[1]);
+  }
   for (const block of text.matchAll(/require\s*\(([\s\S]*?)\)/g)) {
     for (const line of block[1].split(/\r?\n/)) {
+      if (line.includes('// indirect')) continue;
       const match = line.trim().match(/^([^\s/][^\s]*)\s+v\S+/);
       if (match) names.add(match[1]);
     }
@@ -128,6 +131,18 @@ const forbiddenLayerImports = {
   adapters: new Set(['transport']),
   transport: new Set(['adapters', 'platform']),
 };
+
+const selfTest = join(root, 'architecture', 'fixtures', 'services', 'ordering', 'internal', 'ordering', 'application', 'forbidden.go.txt');
+if (!existsSync(selfTest)) {
+  hits.push('architecture/fixtures: architecture checker self-test is missing');
+} else {
+  const detected = importsOf(readFileSync(selfTest, 'utf8')).some((imported) => {
+    const internal = imported.match(/\/services\/[^/]+\/internal\/(?:([^/]+)\/)?([^/]+)(?:\/|$)/);
+    const importedArea = internal?.[1] === 'platform' ? 'platform' : internal?.[2];
+    return forbiddenLayerImports.application.has(importedArea);
+  });
+  if (!detected) hits.push('architecture/fixtures: self-test did not detect its intentional application -> platform violation');
+}
 
 for (const file of allFiles.filter((candidate) => candidate.endsWith('.go'))) {
   const info = classify(file);
