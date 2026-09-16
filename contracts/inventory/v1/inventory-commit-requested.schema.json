@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://b46.local/contracts/inventory/v1/inventory-commit-requested.schema.json",
+  "title": "InventoryCommitRequested",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "operation_id", "order_id", "occurred_at", "items"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "event_id": { "type": "string", "format": "uuid" },
+    "operation_id": { "type": "string", "format": "uuid" },
+    "order_id": { "type": "string", "format": "uuid" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["order_line_id", "product_id", "quantity"],
+        "properties": {
+          "order_line_id": { "type": "string", "format": "uuid" },
+          "product_id": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "quantity": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}

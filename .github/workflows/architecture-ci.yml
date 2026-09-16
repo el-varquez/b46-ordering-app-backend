@@ -24,5 +24,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Architecture checks
-        run: node scripts/check-architecture.mjs
+      - name: Architecture, contract, and migration checks
+        run: |
+          node scripts/check-contracts.mjs
+          node scripts/check-migrations.mjs
+          node scripts/check-architecture.mjs

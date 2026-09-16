@@ -1,0 +1,5 @@
+package application
+
+import "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/platform/postgres"
+
+var _ = postgres.RequiredMigrationVersion

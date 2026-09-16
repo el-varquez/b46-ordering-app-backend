@@ -15,6 +15,22 @@ concurrency:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: b46_ordering_test
+          POSTGRES_USER: b46
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U b46 -d b46_ordering_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      TEST_DATABASE_URL: postgres://b46@localhost:5432/b46_ordering_test?sslmode=disable
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,8 +38,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: stable
-          cache: false
+          go-version-file: .go-version
+          cache-dependency-path: services/ordering/go.sum
 
       - name: Setup Node
         uses: actions/setup-node@v4
