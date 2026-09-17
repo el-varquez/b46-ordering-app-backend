@@ -2,8 +2,8 @@
   "openapi": "3.1.1",
   "info": {
     "title": "B46 Ordering API",
-    "version": "0.2.0",
-    "description": "Phase 2 contract for health, mobile identity, sessions, OAuth linking, and current-user access."
+    "version": "0.3.0",
+    "description": "Phase 3 contract for identity and the complete Customer/Cashier order lifecycle."
   },
   "servers": [{ "url": "http://localhost:8080" }],
   "paths": {
@@ -136,11 +136,143 @@
           "409": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
+    },
+    "/v1/orders": {
+      "post": {
+        "operationId": "placeOrder",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlaceOrderRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/CustomerOrderResponse" },
+          "202": { "$ref": "#/components/responses/CustomerOrderResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "409": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      },
+      "get": {
+        "operationId": "listCustomerOrders",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/Limit" },
+          { "$ref": "#/components/parameters/AfterID" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/CustomerOrderListResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/orders/{order_id}": {
+      "get": {
+        "operationId": "getCustomerOrder",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/OrderID" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/CustomerOrderResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "404": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/staff/orders": {
+      "get": {
+        "operationId": "listCashierOrders",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/Limit" },
+          { "$ref": "#/components/parameters/AfterID" },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/FulfillmentStatus" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/CashierOrderListResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/staff/orders/{order_id}": {
+      "get": {
+        "operationId": "getCashierOrder",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/OrderID" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/CashierOrderResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "404": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/staff/orders/{order_id}/read": {
+      "post": {
+        "operationId": "markCashierOrderRead",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/OrderID" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/CashierOrderResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "404": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/staff/orders/{order_id}/status": {
+      "patch": {
+        "operationId": "advanceCashierOrderStatus",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/OrderID" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdvanceFulfillmentRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/CashierOrderResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "404": { "$ref": "#/components/responses/ErrorResponse" },
+          "409": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
     }
   },
   "components": {
     "securitySchemes": {
       "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "opaque" }
+    },
+    "parameters": {
+      "OrderID": {
+        "name": "order_id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+      },
+      "AfterID": {
+        "name": "after_id",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string", "format": "uuid" }
+      }
     },
     "responses": {
       "SessionResponse": {
@@ -159,6 +291,23 @@
         "description": "The operation completed.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } }
       },
+      "CustomerOrderResponse": {
+        "description": "A Customer-safe order projection.",
+        "headers": { "Location": { "schema": { "type": "string" } } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CustomerOrderEnvelope" } } }
+      },
+      "CustomerOrderListResponse": {
+        "description": "A page of the authenticated Customer's orders.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CustomerOrderListEnvelope" } } }
+      },
+      "CashierOrderResponse": {
+        "description": "A confirmed order for Cashier fulfillment.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CashierOrderEnvelope" } } }
+      },
+      "CashierOrderListResponse": {
+        "description": "A page of confirmed fulfillment orders.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CashierOrderListEnvelope" } } }
+      },
       "ErrorResponse": {
         "description": "A stable safe error.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
@@ -171,11 +320,7 @@
       "AccountStatus": { "type": "string", "enum": ["ACTIVE", "DISABLED"] },
       "OrderStatus": { "type": "string", "enum": ["SUBMITTED", "CONFIRMED", "REJECTED"] },
       "FulfillmentStatus": { "type": "string", "enum": ["PREPARING", "DELIVERING", "DELIVERED"] },
-      "CustomerFulfillmentLabel": {
-        "type": "string",
-        "enum": ["Preparing", "On the way", "Delivered"],
-        "description": "Customer-facing labels. DELIVERING is presented as On the way."
-      },
+      "CustomerOrderStatus": { "type": "string", "enum": ["PREPARING", "ON_THE_WAY", "DELIVERED", "REJECTED"] },
       "ResponseMeta": {
         "type": "object",
         "additionalProperties": false,
@@ -322,6 +467,151 @@
           "meta": { "$ref": "#/components/schemas/ResponseMeta" }
         }
       },
+      "PlaceOrderLineRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["product_id", "quantity", "expected_unit_price_centavos"],
+        "properties": {
+          "product_id": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "quantity": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "expected_unit_price_centavos": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "PlaceOrderRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["checkout_id", "lines", "delivery_address"],
+        "properties": {
+          "checkout_id": { "type": "string", "format": "uuid" },
+          "lines": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "$ref": "#/components/schemas/PlaceOrderLineRequest" } },
+          "delivery_address": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "delivery_notes": { "type": "string", "maxLength": 500, "default": "" }
+        }
+      },
+      "AdvanceFulfillmentRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status"],
+        "properties": { "status": { "$ref": "#/components/schemas/FulfillmentStatus" } }
+      },
+      "OrderLine": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["order_line_id", "product_id", "product_name", "unit_price_centavos", "quantity", "line_total_centavos"],
+        "properties": {
+          "order_line_id": { "type": "string", "format": "uuid" },
+          "product_id": { "type": "string" },
+          "product_name": { "type": "string" },
+          "unit_price_centavos": { "type": "integer", "minimum": 0 },
+          "quantity": { "type": "integer", "minimum": 1 },
+          "line_total_centavos": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "UnavailableItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["product_id", "reason", "available"],
+        "properties": {
+          "product_id": { "type": "string" },
+          "reason": { "type": "string", "const": "OUT_OF_STOCK" },
+          "available": { "type": "boolean", "const": false }
+        }
+      },
+      "OrderRejection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason", "unavailable_items"],
+        "properties": {
+          "reason": { "type": "string", "const": "ITEMS_UNAVAILABLE" },
+          "unavailable_items": { "type": "array", "items": { "$ref": "#/components/schemas/UnavailableItem" } }
+        }
+      },
+      "CustomerOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["order_id", "checkout_id", "status", "subtotal_centavos", "delivery_fee_centavos", "total_centavos", "delivery_address", "delivery_notes", "lines", "created_at", "updated_at"],
+        "properties": {
+          "order_id": { "type": "string", "format": "uuid" },
+          "checkout_id": { "type": "string", "format": "uuid" },
+          "status": { "$ref": "#/components/schemas/CustomerOrderStatus" },
+          "subtotal_centavos": { "type": "integer", "minimum": 0 },
+          "delivery_fee_centavos": { "type": "integer", "minimum": 0 },
+          "total_centavos": { "type": "integer", "minimum": 0 },
+          "delivery_address": { "type": "string" },
+          "delivery_notes": { "type": "string" },
+          "lines": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/OrderLine" } },
+          "rejection": { "$ref": "#/components/schemas/OrderRejection" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CustomerOrderPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["orders", "next_after_id"],
+        "properties": {
+          "orders": { "type": "array", "items": { "$ref": "#/components/schemas/CustomerOrder" } },
+          "next_after_id": { "type": "string" }
+        }
+      },
+      "CustomerOrderEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": { "data": { "$ref": "#/components/schemas/CustomerOrder" }, "meta": { "$ref": "#/components/schemas/ResponseMeta" } }
+      },
+      "CustomerOrderListEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": { "data": { "$ref": "#/components/schemas/CustomerOrderPage" }, "meta": { "$ref": "#/components/schemas/ResponseMeta" } }
+      },
+      "CashierCustomer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["customer_id", "name"],
+        "properties": { "customer_id": { "type": "string", "format": "uuid" }, "name": { "type": "string" } }
+      },
+      "CashierOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["order_id", "customer", "status", "unread", "next_action", "subtotal_centavos", "delivery_fee_centavos", "total_centavos", "delivery_address", "delivery_notes", "lines", "created_at"],
+        "properties": {
+          "order_id": { "type": "string", "format": "uuid" },
+          "customer": { "$ref": "#/components/schemas/CashierCustomer" },
+          "status": { "$ref": "#/components/schemas/FulfillmentStatus" },
+          "unread": { "type": "boolean" },
+          "next_action": { "oneOf": [{ "$ref": "#/components/schemas/FulfillmentStatus" }, { "type": "null" }] },
+          "subtotal_centavos": { "type": "integer", "minimum": 0 },
+          "delivery_fee_centavos": { "type": "integer", "minimum": 0 },
+          "total_centavos": { "type": "integer", "minimum": 0 },
+          "delivery_address": { "type": "string" },
+          "delivery_notes": { "type": "string" },
+          "lines": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/OrderLine" } },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CashierOrderPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["orders", "next_after_id"],
+        "properties": {
+          "orders": { "type": "array", "items": { "$ref": "#/components/schemas/CashierOrder" } },
+          "next_after_id": { "type": "string" }
+        }
+      },
+      "CashierOrderEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": { "data": { "$ref": "#/components/schemas/CashierOrder" }, "meta": { "$ref": "#/components/schemas/ResponseMeta" } }
+      },
+      "CashierOrderListEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": { "data": { "$ref": "#/components/schemas/CashierOrderPage" }, "meta": { "$ref": "#/components/schemas/ResponseMeta" } }
+      },
       "Error": {
         "type": "object",
         "additionalProperties": false,
@@ -333,7 +623,8 @@
               "INVALID_REQUEST", "INVALID_CREDENTIALS", "INVALID_OAUTH_CREDENTIAL",
               "INVALID_OAUTH_INTENT", "IDENTITY_LINK_REQUIRED", "IDENTITY_ALREADY_LINKED",
               "ACCOUNT_DISABLED", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND",
-              "CONFLICT", "ITEMS_UNAVAILABLE", "SERVICE_UNAVAILABLE", "INTERNAL_ERROR"
+              "CONFLICT", "CART_CHANGED", "ITEMS_UNAVAILABLE", "INVALID_TRANSITION",
+              "SERVICE_UNAVAILABLE", "INTERNAL_ERROR"
             ]
           },
           "message": { "type": "string", "minLength": 1 }

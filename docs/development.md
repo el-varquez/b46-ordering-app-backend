@@ -27,11 +27,43 @@ Integration checks require `TEST_DATABASE_URL`. It must identify a disposable
 database because tests create short-lived schemas and exercise constraints. CI
 provides PostgreSQL 18.6 automatically.
 
-## Phase 1 gate
+## Phase 3 gate
 
 `make check` runs contracts, migration structure, architecture, formatting,
 static analysis, race-enabled tests, and builds. With `TEST_DATABASE_URL` set,
 it also applies migrations twice and runs database integration tests.
+
+## Order lifecycle development
+
+The local API uses a deterministic checkout catalog containing `COKE-1.5L`,
+`TASTY-BREAD`, and `FRESH-MILK-1L`. Prices are integer centavos. Placing an
+order writes its line snapshots, pending inventory operation, and outbox event
+in one transaction. The in-process worker commits through the Phase 3 fake
+inventory adapter and creates the unread `PREPARING` fulfillment. There is no
+inventory-checking screen or cancellation state in the public contract.
+
+Customer routes require an exact `CUSTOMER` access token. Cashier routes under
+`/v1/staff/orders` require an exact `CASHIER` token; Admin is not implicitly a
+Cashier. A newly placed order is immediately represented to the Customer as
+`PREPARING`. Cashier transitions are only `PREPARING -> DELIVERING ->
+DELIVERED`, while Customers receive `ON_THE_WAY` for the middle state.
+
+Use a new UUID for each logical `checkout_id` and reuse that UUID only when
+retrying the identical Place Order request. The same ID with changed input is
+a conflict. Order lists use `limit` and `after_id` keyset pagination. Opening a
+Cashier detail is read-only; call the separate `/read` action to clear its New
+badge.
+
+The fake catalog and inventory adapters exist only to prove the lifecycle.
+Phase 4 replaces the inventory fake through the existing `InventoryCommitter`
+interface; it must not move inventory details into the public HTTP response.
+
+For the complete PostgreSQL suite, set `TEST_DATABASE_URL` to the disposable
+test database, migrate it to version 3, and run:
+
+```text
+go -C services/ordering test -tags=integration -count=1 ./...
+```
 
 ## Troubleshooting
 

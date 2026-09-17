@@ -63,5 +63,5 @@ contracts: ## Validate OpenAPI and versioned contract examples.
 migrations-check: ## Validate migration naming and append-only structure.
 	node scripts/check-migrations.mjs
 
-check: ## Run every completed backend gate through Phase 2.
-	node scripts/check-phase2.mjs
+check: ## Run every completed backend gate through Phase 3.
+	node scripts/check-phase3.mjs

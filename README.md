@@ -1,10 +1,10 @@
 # B46 Ordering Backend
 
 Go modular monolith for B46 Ordering, plus the contract boundary for the future
-inventory adapter. Phase 2 adds password and Google/Apple identity, opaque
-mobile sessions with rotating refresh tokens, authenticated current-user
-access, explicit OAuth linking, and audited initial Admin bootstrap. Ordering
-use cases and inventory synchronization remain later phases.
+inventory adapter. Phase 3 proves idempotent checkout, the transactional
+outbox, fake inventory outcomes, Customer order history, the Cashier queue,
+and the Preparing to Delivering to Delivered lifecycle. Password and
+Google/Apple identity use opaque mobile sessions with rotating refresh tokens.
 
 ## Pinned toolchain
 
@@ -26,11 +26,12 @@ make run
 Make loads `.env` automatically. Direct Go commands still require the variable
 in the current shell: PowerShell uses `$env:DATABASE_URL = "..."`; Bash uses
 `export DATABASE_URL="..."`.
-The API exposes health and identity routes on port 8080. Protected routes use
+The API exposes health, identity, Customer-order, and Cashier-order routes on
+port 8080. Protected routes use
 `Authorization: Bearer <access-token>`; refresh tokens are accepted only by the
 refresh operation's JSON body. No browser cookie authentication is used.
 
-Run `make help` for all commands. `make check` is the single Phase 2 gate. Set
+Run `make help` for all commands. `make check` is the single Phase 3 gate. Set
 `TEST_DATABASE_URL` to a disposable migrated PostgreSQL database to include the
 database integration suite; CI always does this.
 
@@ -61,7 +62,7 @@ regular test suite signs local fixtures and never contacts live providers.
 
 ## Repository map
 
-- `services/ordering`: Ordering composition root, platform, and Phase 2 identity module.
+- `services/ordering`: Ordering composition root, identity, order lifecycle, and worker.
 - `services/inventory-adapter`: reserved structure; implementation starts in Phase 4.
 - `contracts/http`: source-of-truth OpenAPI contract.
 - `contracts/inventory/v1`: versioned Ordering/adapter JSON schemas and fixtures.
@@ -93,4 +94,4 @@ node scripts/check-conventions.mjs --branch ci/example --subject "ci: add checks
 ```
 
 See [backend architecture](docs/architecture/backend.md), [contracts](contracts/README.md),
-and the [developer workflow](docs/development.md) before beginning Phase 2.
+and the [developer workflow](docs/development.md) before changing lifecycle code.

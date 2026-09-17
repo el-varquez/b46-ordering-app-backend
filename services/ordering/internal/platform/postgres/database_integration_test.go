@@ -100,9 +100,9 @@ func TestFoundationConstraints(t *testing.T) {
 	var orderID string
 	err = tx.QueryRow(ctx, `
 		INSERT INTO orders (
-			checkout_id, customer_id, subtotal_centavos, delivery_fee_centavos,
+			checkout_id, checkout_fingerprint, customer_id, subtotal_centavos, delivery_fee_centavos,
 			total_centavos, delivery_address
-		) VALUES ($1, $2, 1000, 50, 1050, 'Bria Homes')
+		) VALUES ($1, repeat('a', 64), $2, 1000, 50, 1050, 'Bria Homes')
 		RETURNING id
 	`, checkoutID, customerID).Scan(&orderID)
 	if err != nil {
@@ -111,23 +111,23 @@ func TestFoundationConstraints(t *testing.T) {
 
 	expectSQLState(t, ctx, tx, "duplicate checkout_id", "23505", `
 		INSERT INTO orders (
-			checkout_id, customer_id, subtotal_centavos, delivery_fee_centavos,
+			checkout_id, checkout_fingerprint, customer_id, subtotal_centavos, delivery_fee_centavos,
 			total_centavos, delivery_address
-		) VALUES ($1, $2, 1000, 50, 1050, 'Bria Homes')
+		) VALUES ($1, repeat('b', 64), $2, 1000, 50, 1050, 'Bria Homes')
 	`, checkoutID, customerID)
 
 	expectSQLState(t, ctx, tx, "invalid order state", "23514", `
 		INSERT INTO orders (
-			checkout_id, customer_id, status, subtotal_centavos,
+			checkout_id, checkout_fingerprint, customer_id, status, subtotal_centavos,
 			delivery_fee_centavos, total_centavos, delivery_address
-		) VALUES ($1, $2, 'CHECKING_INVENTORY', 1000, 50, 1050, 'Bria Homes')
+		) VALUES ($1, repeat('c', 64), $2, 'CHECKING_INVENTORY', 1000, 50, 1050, 'Bria Homes')
 	`, randomUUID(t), customerID)
 
 	expectSQLState(t, ctx, tx, "broken customer relationship", "23503", `
 		INSERT INTO orders (
-			checkout_id, customer_id, subtotal_centavos, delivery_fee_centavos,
+			checkout_id, checkout_fingerprint, customer_id, subtotal_centavos, delivery_fee_centavos,
 			total_centavos, delivery_address
-		) VALUES ($1, $2, 1000, 50, 1050, 'Bria Homes')
+		) VALUES ($1, repeat('d', 64), $2, 1000, 50, 1050, 'Bria Homes')
 	`, randomUUID(t), randomUUID(t))
 
 	operationID := randomUUID(t)
@@ -141,9 +141,9 @@ func TestFoundationConstraints(t *testing.T) {
 	var secondOrderID string
 	err = tx.QueryRow(ctx, `
 		INSERT INTO orders (
-			checkout_id, customer_id, subtotal_centavos, delivery_fee_centavos,
+			checkout_id, checkout_fingerprint, customer_id, subtotal_centavos, delivery_fee_centavos,
 			total_centavos, delivery_address
-		) VALUES ($1, $2, 500, 0, 500, 'Bria Homes')
+		) VALUES ($1, repeat('e', 64), $2, 500, 0, 500, 'Bria Homes')
 		RETURNING id
 	`, randomUUID(t), customerID).Scan(&secondOrderID)
 	if err != nil {

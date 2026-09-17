@@ -112,6 +112,22 @@ func (handler *Handler) refresh(writer http.ResponseWriter, request *http.Reques
 
 type protectedHandler func(http.ResponseWriter, *http.Request, domain.Principal)
 
+type AuthorizedHandler = func(http.ResponseWriter, *http.Request, domain.Principal)
+
+func (handler *Handler) RequireRole(role domain.Role, next AuthorizedHandler) http.HandlerFunc {
+	return handler.authenticated(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+		principal domain.Principal,
+	) {
+		if err := application.Authorize(principal, role); err != nil {
+			handler.fail(writer, request, err)
+			return
+		}
+		next(writer, request, principal)
+	})
+}
+
 func (handler *Handler) authenticated(next protectedHandler) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
 		token, ok := bearerToken(request.Header.Get("Authorization"))

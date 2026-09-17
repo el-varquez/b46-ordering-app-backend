@@ -25,6 +25,11 @@ const (
 	defaultArgonMemoryKiB       = int64(19 * 1024)
 	defaultArgonIterations      = int64(2)
 	defaultArgonParallelism     = int64(1)
+	defaultOutboxPollInterval   = 500 * time.Millisecond
+	defaultOutboxBatchSize      = int64(10)
+	defaultOutboxLeaseTimeout   = 30 * time.Second
+	defaultOutboxRetryBase      = time.Second
+	defaultOutboxRetryMax       = time.Minute
 )
 
 // Config is the validated process configuration. It is created once at startup
@@ -48,6 +53,11 @@ type Config struct {
 	ArgonParallelism      uint8
 	GoogleClientIDs       []string
 	AppleClientIDs        []string
+	OutboxPollInterval    time.Duration
+	OutboxBatchSize       int
+	OutboxLeaseTimeout    time.Duration
+	OutboxRetryBase       time.Duration
+	OutboxRetryMax        time.Duration
 }
 
 // Load reads environment variables and rejects unsafe or malformed startup
@@ -140,6 +150,41 @@ func Load() (Config, error) {
 		return Config{}, errors.New("GOOGLE_CLIENT_IDS and APPLE_CLIENT_IDS are required in production")
 	}
 
+	outboxPollInterval, err := boundedDuration(
+		"OUTBOX_POLL_INTERVAL", defaultOutboxPollInterval, 50*time.Millisecond, time.Minute,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	outboxBatchSize, err := integer("OUTBOX_BATCH_SIZE", defaultOutboxBatchSize)
+	if err != nil || outboxBatchSize < 1 || outboxBatchSize > 100 {
+		return Config{}, errors.New("OUTBOX_BATCH_SIZE must be from 1 to 100")
+	}
+	outboxLeaseTimeout, err := boundedDuration(
+		"OUTBOX_LEASE_TIMEOUT", defaultOutboxLeaseTimeout, 100*time.Millisecond, 10*time.Minute,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	if outboxLeaseTimeout <= outboxPollInterval {
+		return Config{}, errors.New("OUTBOX_LEASE_TIMEOUT must be longer than OUTBOX_POLL_INTERVAL")
+	}
+	outboxRetryBase, err := boundedDuration(
+		"OUTBOX_RETRY_BASE", defaultOutboxRetryBase, 100*time.Millisecond, 10*time.Minute,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	outboxRetryMax, err := boundedDuration(
+		"OUTBOX_RETRY_MAX", defaultOutboxRetryMax, 100*time.Millisecond, time.Hour,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	if outboxRetryMax < outboxRetryBase {
+		return Config{}, errors.New("OUTBOX_RETRY_MAX must not be shorter than OUTBOX_RETRY_BASE")
+	}
+
 	return Config{
 		Environment:           environment,
 		HTTPAddress:           net.JoinHostPort(host, port),
@@ -159,7 +204,21 @@ func Load() (Config, error) {
 		ArgonParallelism:      uint8(argonParallelism),
 		GoogleClientIDs:       googleClientIDs,
 		AppleClientIDs:        appleClientIDs,
+		OutboxPollInterval:    outboxPollInterval,
+		OutboxBatchSize:       int(outboxBatchSize),
+		OutboxLeaseTimeout:    outboxLeaseTimeout,
+		OutboxRetryBase:       outboxRetryBase,
+		OutboxRetryMax:        outboxRetryMax,
 	}, nil
+}
+
+func boundedDuration(key string, fallback, minimum, maximum time.Duration) (time.Duration, error) {
+	value := envOrDefault(key, fallback.String())
+	parsed, err := time.ParseDuration(value)
+	if err != nil || parsed < minimum || parsed > maximum {
+		return 0, fmt.Errorf("%s must be a duration from %s to %s", key, minimum, maximum)
+	}
+	return parsed, nil
 }
 
 func envOrDefault(key, fallback string) string {

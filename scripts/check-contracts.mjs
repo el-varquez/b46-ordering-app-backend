@@ -83,6 +83,25 @@ try {
       failures.push(`contracts/http/openapi.json: missing ${method.toUpperCase()} ${route}`);
     }
   }
+  const orderingOperations = [
+    ['post', '/v1/orders'],
+    ['get', '/v1/orders'],
+    ['get', '/v1/orders/{order_id}'],
+    ['get', '/v1/staff/orders'],
+    ['get', '/v1/staff/orders/{order_id}'],
+    ['post', '/v1/staff/orders/{order_id}/read'],
+    ['patch', '/v1/staff/orders/{order_id}/status'],
+  ];
+  for (const [method, route] of orderingOperations) {
+    const operation = openapi.paths?.[route]?.[method];
+    if (!operation) {
+      failures.push(`contracts/http/openapi.json: missing ${method.toUpperCase()} ${route}`);
+      continue;
+    }
+    if (JSON.stringify(operation.security) !== JSON.stringify([{ bearerAuth: [] }])) {
+      failures.push(`contracts/http/openapi.json: ${method.toUpperCase()} ${route} must require bearerAuth`);
+    }
+  }
   const bearer = openapi.components?.securitySchemes?.bearerAuth;
   if (bearer?.type !== 'http' || bearer?.scheme !== 'bearer' || bearer?.bearerFormat !== 'opaque') {
     failures.push('contracts/http/openapi.json: bearerAuth must describe opaque HTTP bearer tokens');
@@ -105,6 +124,7 @@ try {
     AccountStatus: ['ACTIVE', 'DISABLED'],
     OrderStatus: ['SUBMITTED', 'CONFIRMED', 'REJECTED'],
     FulfillmentStatus: ['PREPARING', 'DELIVERING', 'DELIVERED'],
+    CustomerOrderStatus: ['PREPARING', 'ON_THE_WAY', 'DELIVERED', 'REJECTED'],
   };
   for (const [schema, values] of Object.entries(expectedVocabulary)) {
     const actual = openapi.components?.schemas?.[schema]?.enum;
@@ -119,6 +139,8 @@ try {
     'IDENTITY_LINK_REQUIRED',
     'IDENTITY_ALREADY_LINKED',
     'ACCOUNT_DISABLED',
+    'CART_CHANGED',
+    'INVALID_TRANSITION',
   ]) {
     if (!errorCodes.includes(code)) failures.push(`contracts/http/openapi.json: missing error code ${code}`);
   }
@@ -127,6 +149,21 @@ try {
   }
   for (const hiddenState of ['PENDING', 'PUBLISHED', 'InventoryCommitRequested']) {
     if (serialized.includes(hiddenState)) failures.push(`contracts/http/openapi.json: customer contract exposes backend state ${hiddenState}`);
+  }
+  for (const hiddenField of [
+    'available_quantity',
+    'operation_id',
+    'event_id',
+    'checkout_fingerprint',
+    'claim_token',
+    'attempt_count',
+    'last_error_code',
+  ]) {
+    if (serialized.includes(hiddenField)) failures.push(`contracts/http/openapi.json: public schema exposes internal field ${hiddenField}`);
+  }
+  const checkoutProperties = Object.keys(openapi.components?.schemas?.PlaceOrderRequest?.properties ?? {});
+  for (const clientOwned of ['customer_id', 'product_name', 'subtotal_centavos', 'total_centavos', 'status', 'role']) {
+    if (checkoutProperties.includes(clientOwned)) failures.push(`contracts/http/openapi.json: PlaceOrderRequest lets clients set ${clientOwned}`);
   }
 } catch (error) {
   failures.push(`contracts/http/openapi.json: ${error.message}`);

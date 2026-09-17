@@ -82,3 +82,28 @@ func TestProductionRequiresOAuthAudiences(t *testing.T) {
 		t.Fatalf("Load() error = %v, want provider audience validation", err)
 	}
 }
+
+func TestLoadOutboxWorkerDefaults(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/b46")
+
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got.OutboxPollInterval != 500*time.Millisecond || got.OutboxBatchSize != 10 ||
+		got.OutboxLeaseTimeout != 30*time.Second || got.OutboxRetryBase != time.Second ||
+		got.OutboxRetryMax != time.Minute {
+		t.Fatalf("unexpected worker defaults: %#v", got)
+	}
+}
+
+func TestLoadRejectsWorkerLeaseShorterThanPoll(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/b46")
+	t.Setenv("OUTBOX_POLL_INTERVAL", "2s")
+	t.Setenv("OUTBOX_LEASE_TIMEOUT", "1s")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "OUTBOX_LEASE_TIMEOUT") {
+		t.Fatalf("Load() error = %v, want lease validation", err)
+	}
+}

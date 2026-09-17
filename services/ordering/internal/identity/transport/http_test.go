@@ -106,7 +106,62 @@ func TestLogoutIsRepeatableAtHTTPBoundary(t *testing.T) {
 	}
 }
 
-type logoutStore struct{ revoked bool }
+func TestRequireRoleEnforcesExactActiveRole(t *testing.T) {
+	tests := []struct {
+		name       string
+		principal  domain.Principal
+		required   domain.Role
+		wantStatus int
+		wantCode   string
+		wantCalled bool
+	}{
+		{
+			name: "matching customer", principal: domain.Principal{UserID: "user", Role: domain.RoleCustomer, Status: domain.AccountActive},
+			required: domain.RoleCustomer, wantStatus: http.StatusOK, wantCalled: true,
+		},
+		{
+			name: "admin is not cashier", principal: domain.Principal{UserID: "user", Role: domain.RoleAdmin, Status: domain.AccountActive},
+			required: domain.RoleCashier, wantStatus: http.StatusForbidden, wantCode: "FORBIDDEN",
+		},
+		{
+			name: "disabled cashier", principal: domain.Principal{UserID: "user", Role: domain.RoleCashier, Status: domain.AccountDisabled},
+			required: domain.RoleCashier, wantStatus: http.StatusUnauthorized, wantCode: "UNAUTHENTICATED",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := &logoutStore{principal: test.principal}
+			identity, err := application.New(
+				store, stubHasher{}, stubTokens{}, stubClock{}, nil,
+				application.Config{AccessTokenLifetime: time.Minute, RefreshTokenLifetime: time.Hour, OAuthIntentLifetime: time.Minute},
+			)
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			responses := &recordedResponse{}
+			handler := New(identity, responses)
+			called := false
+			protected := handler.RequireRole(test.required, func(http.ResponseWriter, *http.Request, domain.Principal) {
+				called = true
+				responses.status = http.StatusOK
+			})
+			request := httptest.NewRequest(http.MethodGet, "/protected", nil)
+			request.Header.Set("Authorization", "Bearer access-token")
+
+			protected(httptest.NewRecorder(), request)
+
+			if responses.status != test.wantStatus || responses.code != test.wantCode || called != test.wantCalled {
+				t.Fatalf("response = (%d, %q, called=%t), want (%d, %q, called=%t)",
+					responses.status, responses.code, called, test.wantStatus, test.wantCode, test.wantCalled)
+			}
+		})
+	}
+}
+
+type logoutStore struct {
+	revoked   bool
+	principal domain.Principal
+}
 
 func (*logoutStore) FindPassword(context.Context, string) (domain.PasswordRecord, error) {
 	return domain.PasswordRecord{}, nil
@@ -118,6 +173,9 @@ func (*logoutStore) CreateSession(context.Context, domain.NewSession) (domain.Us
 func (store *logoutStore) AuthenticateAccess(context.Context, string, time.Time) (domain.Principal, error) {
 	if store.revoked {
 		return domain.Principal{}, domain.ErrUnauthenticated
+	}
+	if store.principal.UserID != "" {
+		return store.principal, nil
 	}
 	return domain.Principal{
 		UserID: "user-id", Role: domain.RoleAdmin,
