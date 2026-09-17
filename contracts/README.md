@@ -4,12 +4,18 @@ This repository is the source of truth for the public HTTP contract and the
 private Ordering-to-inventory-adapter contract. Consumers pin an immutable tag
 or commit of this repository; they do not copy Go source into another project.
 
+`http/openapi.json` includes identity plus the Phase 3 Customer checkout and
+history operations and Cashier queue, detail, read, and status operations.
+Customer schemas intentionally omit internal order states, inventory
+quantities, operation/event IDs, outbox state, claims, and retry metadata.
+
 ## Stable vocabulary
 
 - Roles: `CUSTOMER`, `CASHIER`, `ADMIN`.
 - Internal order states: `SUBMITTED`, `CONFIRMED`, `REJECTED`.
 - Fulfillment states: `PREPARING`, `DELIVERING`, `DELIVERED`.
-- Customer labels: Preparing, **On the way** for `DELIVERING`, and Delivered.
+- Customer order states: `PREPARING`, `ON_THE_WAY` for internal `DELIVERING`,
+  `DELIVERED`, and `REJECTED`.
 
 `New`, outbox status, migration status, and adapter processing status are not
 customer-visible order states.
