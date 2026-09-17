@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadRequiresDatabaseURL(t *testing.T) {
@@ -49,5 +50,35 @@ func TestLoadRejectsUnknownEnvironment(t *testing.T) {
 	_, err := Load()
 	if err == nil || !strings.Contains(err.Error(), "APP_ENV") {
 		t.Fatalf("Load() error = %v, want APP_ENV validation", err)
+	}
+}
+
+func TestLoadIdentityDefaults(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/b46")
+
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got.AccessTokenLifetime != 15*time.Minute {
+		t.Errorf("AccessTokenLifetime = %s, want 15m", got.AccessTokenLifetime)
+	}
+	if got.RefreshTokenLifetime != 30*24*time.Hour {
+		t.Errorf("RefreshTokenLifetime = %s, want 720h", got.RefreshTokenLifetime)
+	}
+	if got.ArgonMemoryKiB < 19*1024 || got.ArgonIterations < 2 {
+		t.Fatal("Argon2id defaults are below the locked minimum")
+	}
+}
+
+func TestProductionRequiresOAuthAudiences(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/b46")
+	t.Setenv("GOOGLE_CLIENT_IDS", "")
+	t.Setenv("APPLE_CLIENT_IDS", "")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "CLIENT_IDS") {
+		t.Fatalf("Load() error = %v, want provider audience validation", err)
 	}
 }

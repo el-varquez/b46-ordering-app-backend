@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: b46
       POSTGRES_PASSWORD: b46_local_only
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - b46-postgres-data:/var/lib/postgresql
     healthcheck:
