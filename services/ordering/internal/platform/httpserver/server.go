@@ -13,6 +13,10 @@ type HealthChecker interface {
 	Check(context.Context) error
 }
 
+type RouteRegistrar interface {
+	Register(*http.ServeMux)
+}
+
 type Options struct {
 	Address             string
 	ReadTimeout         time.Duration
@@ -21,10 +25,11 @@ type Options struct {
 	MaxRequestBodyBytes int64
 	Logger              *slog.Logger
 	Readiness           HealthChecker
+	Routes              []RouteRegistrar
 }
 
 func New(options Options) *http.Server {
-	handler := NewHandler(options.Logger, options.Readiness, options.MaxRequestBodyBytes)
+	handler := NewHandler(options.Logger, options.Readiness, options.MaxRequestBodyBytes, options.Routes...)
 	return &http.Server{
 		Addr:              options.Address,
 		Handler:           handler,
@@ -35,7 +40,12 @@ func New(options Options) *http.Server {
 	}
 }
 
-func NewHandler(logger *slog.Logger, readiness HealthChecker, maxRequestBodyBytes int64) http.Handler {
+func NewHandler(
+	logger *slog.Logger,
+	readiness HealthChecker,
+	maxRequestBodyBytes int64,
+	routes ...RouteRegistrar,
+) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health/live", func(writer http.ResponseWriter, request *http.Request) {
 		writeSuccess(writer, request, http.StatusOK, map[string]string{
@@ -57,6 +67,9 @@ func NewHandler(logger *slog.Logger, readiness HealthChecker, maxRequestBodyByte
 			"status":  "ready",
 		})
 	})
+	for _, registrar := range routes {
+		registrar.Register(mux)
+	}
 	mux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, request, http.StatusNotFound, "NOT_FOUND", "The requested resource was not found.")
 	})

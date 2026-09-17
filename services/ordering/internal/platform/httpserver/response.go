@@ -43,3 +43,23 @@ func writeError(writer http.ResponseWriter, request *http.Request, status int, c
 		Meta:  responseMeta{RequestID: CorrelationID(request.Context())},
 	})
 }
+
+type JSONResponder struct{}
+
+func (JSONResponder) Success(
+	writer http.ResponseWriter,
+	request *http.Request,
+	status int,
+	data any,
+) {
+	writeSuccess(writer, request, status, data)
+}
+
+func (JSONResponder) Error(
+	writer http.ResponseWriter,
+	request *http.Request,
+	status int,
+	code, message string,
+) {
+	writeError(writer, request, status, code, message)
+}
