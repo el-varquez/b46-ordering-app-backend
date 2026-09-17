@@ -68,8 +68,41 @@ try {
   for (const route of ['/v1/health/live', '/v1/health/ready']) {
     if (!openapi.paths?.[route]?.get) failures.push(`contracts/http/openapi.json: missing GET ${route}`);
   }
+  const identityOperations = [
+    ['post', '/v1/auth/password/login'],
+    ['post', '/v1/auth/oauth/intents'],
+    ['post', '/v1/auth/oauth/login'],
+    ['post', '/v1/auth/refresh'],
+    ['post', '/v1/auth/logout'],
+    ['get', '/v1/me'],
+    ['post', '/v1/me/oauth-link-intents'],
+    ['post', '/v1/me/oauth-identities'],
+  ];
+  for (const [method, route] of identityOperations) {
+    if (!openapi.paths?.[route]?.[method]) {
+      failures.push(`contracts/http/openapi.json: missing ${method.toUpperCase()} ${route}`);
+    }
+  }
+  const bearer = openapi.components?.securitySchemes?.bearerAuth;
+  if (bearer?.type !== 'http' || bearer?.scheme !== 'bearer' || bearer?.bearerFormat !== 'opaque') {
+    failures.push('contracts/http/openapi.json: bearerAuth must describe opaque HTTP bearer tokens');
+  }
+  for (const [method, route] of [
+    ['post', '/v1/auth/logout'],
+    ['get', '/v1/me'],
+    ['post', '/v1/me/oauth-link-intents'],
+    ['post', '/v1/me/oauth-identities'],
+  ]) {
+    const security = openapi.paths?.[route]?.[method]?.security;
+    if (JSON.stringify(security) !== JSON.stringify([{ bearerAuth: [] }])) {
+      failures.push(`contracts/http/openapi.json: ${method.toUpperCase()} ${route} must require bearerAuth`);
+    }
+  }
   const expectedVocabulary = {
     Role: ['CUSTOMER', 'CASHIER', 'ADMIN'],
+    Provider: ['PASSWORD', 'GOOGLE', 'APPLE'],
+    OAuthProvider: ['GOOGLE', 'APPLE'],
+    AccountStatus: ['ACTIVE', 'DISABLED'],
     OrderStatus: ['SUBMITTED', 'CONFIRMED', 'REJECTED'],
     FulfillmentStatus: ['PREPARING', 'DELIVERING', 'DELIVERED'],
   };
@@ -78,6 +111,20 @@ try {
     if (JSON.stringify(actual) !== JSON.stringify(values)) failures.push(`contracts/http/openapi.json: ${schema} vocabulary drifted`);
   }
   const serialized = JSON.stringify(openapi.components?.schemas ?? {});
+  const errorCodes = openapi.components?.schemas?.Error?.properties?.code?.enum ?? [];
+  for (const code of [
+    'INVALID_CREDENTIALS',
+    'INVALID_OAUTH_CREDENTIAL',
+    'INVALID_OAUTH_INTENT',
+    'IDENTITY_LINK_REQUIRED',
+    'IDENTITY_ALREADY_LINKED',
+    'ACCOUNT_DISABLED',
+  ]) {
+    if (!errorCodes.includes(code)) failures.push(`contracts/http/openapi.json: missing error code ${code}`);
+  }
+  if (JSON.stringify(openapi).includes('password_hash')) {
+    failures.push('contracts/http/openapi.json: password_hash must never appear in the public contract');
+  }
   for (const hiddenState of ['PENDING', 'PUBLISHED', 'InventoryCommitRequested']) {
     if (serialized.includes(hiddenState)) failures.push(`contracts/http/openapi.json: customer contract exposes backend state ${hiddenState}`);
   }

@@ -8,7 +8,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	identityoauth "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/adapters/oauth"
+	identitypostgres "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/adapters/postgres"
+	identitysecurity "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/adapters/security"
+	identityapp "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/application"
+	identitytransport "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/transport"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/platform/config"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/platform/httpserver"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/platform/observability"
@@ -43,6 +49,35 @@ func run() error {
 		return errors.New("database is not ready; apply required migrations before starting the API")
 	}
 
+	passwordHasher := identitysecurity.NewArgon2id(
+		processConfig.ArgonMemoryKiB,
+		processConfig.ArgonIterations,
+		processConfig.ArgonParallelism,
+	)
+	providerHTTPClient := &http.Client{Timeout: 5 * time.Second}
+	oauthVerifier := identityoauth.New(
+		processContext,
+		providerHTTPClient,
+		processConfig.GoogleClientIDs,
+		processConfig.AppleClientIDs,
+	)
+	identityService, err := identityapp.New(
+		identitypostgres.New(database.Pool()),
+		passwordHasher,
+		identitysecurity.RandomTokenGenerator{},
+		identitysecurity.SystemClock{},
+		oauthVerifier,
+		identityapp.Config{
+			AccessTokenLifetime:  processConfig.AccessTokenLifetime,
+			RefreshTokenLifetime: processConfig.RefreshTokenLifetime,
+			OAuthIntentLifetime:  processConfig.OAuthIntentLifetime,
+		},
+	)
+	if err != nil {
+		return err
+	}
+	identityRoutes := identitytransport.New(identityService, httpserver.JSONResponder{})
+
 	server := httpserver.New(httpserver.Options{
 		Address:             processConfig.HTTPAddress,
 		ReadTimeout:         processConfig.HTTPReadTimeout,
@@ -51,6 +86,7 @@ func run() error {
 		MaxRequestBodyBytes: processConfig.MaxRequestBodyBytes,
 		Logger:              logger,
 		Readiness:           database,
+		Routes:              []httpserver.RouteRegistrar{identityRoutes},
 	})
 
 	serverError := make(chan error, 1)

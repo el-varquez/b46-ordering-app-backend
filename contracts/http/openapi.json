@@ -2,8 +2,8 @@
   "openapi": "3.1.1",
   "info": {
     "title": "B46 Ordering API",
-    "version": "0.1.0",
-    "description": "Phase 1 contract baseline for the B46 Ordering backend. Backend processing states are intentionally absent from customer contracts."
+    "version": "0.2.0",
+    "description": "Phase 2 contract for health, mobile identity, sessions, OAuth linking, and current-user access."
   },
   "servers": [{ "url": "http://localhost:8080" }],
   "paths": {
@@ -23,20 +23,152 @@
         "operationId": "getReadiness",
         "responses": {
           "200": {
-            "description": "PostgreSQL is reachable and the required schema is applied.",
+            "description": "PostgreSQL is reachable and current.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
           },
-          "503": {
-            "description": "The service is not ready.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
-          }
+          "503": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/auth/password/login": {
+      "post": {
+        "operationId": "passwordLogin",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PasswordLoginRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/SessionResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/auth/oauth/intents": {
+      "post": {
+        "operationId": "createOAuthLoginIntent",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthIntentRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/OAuthIntentResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/auth/oauth/login": {
+      "post": {
+        "operationId": "oauthLogin",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthCompleteRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/SessionResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "409": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/auth/refresh": {
+      "post": {
+        "operationId": "refreshSession",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefreshRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/SessionResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/StatusResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "operationId": "getCurrentUser",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/CurrentUserResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/me/oauth-link-intents": {
+      "post": {
+        "operationId": "createOAuthLinkIntent",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthIntentRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/OAuthIntentResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/me/oauth-identities": {
+      "post": {
+        "operationId": "linkOAuthIdentity",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthCompleteRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/StatusResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "409": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
     }
   },
   "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "opaque" }
+    },
+    "responses": {
+      "SessionResponse": {
+        "description": "A new B46 mobile session token pair.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionResponse" } } }
+      },
+      "OAuthIntentResponse": {
+        "description": "A one-time OAuth intent and provider nonce.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthIntentResponse" } } }
+      },
+      "CurrentUserResponse": {
+        "description": "The canonical authenticated user.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CurrentUserResponse" } } }
+      },
+      "StatusResponse": {
+        "description": "The operation completed.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } }
+      },
+      "ErrorResponse": {
+        "description": "A stable safe error.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+      }
+    },
     "schemas": {
       "Role": { "type": "string", "enum": ["CUSTOMER", "CASHIER", "ADMIN"] },
+      "Provider": { "type": "string", "enum": ["PASSWORD", "GOOGLE", "APPLE"] },
+      "OAuthProvider": { "type": "string", "enum": ["GOOGLE", "APPLE"] },
+      "AccountStatus": { "type": "string", "enum": ["ACTIVE", "DISABLED"] },
       "OrderStatus": { "type": "string", "enum": ["SUBMITTED", "CONFIRMED", "REJECTED"] },
       "FulfillmentStatus": { "type": "string", "enum": ["PREPARING", "DELIVERING", "DELIVERED"] },
       "CustomerFulfillmentLabel": {
@@ -67,6 +199,129 @@
           "meta": { "$ref": "#/components/schemas/ResponseMeta" }
         }
       },
+      "PasswordLoginRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email", "maxLength": 254 },
+          "password": { "type": "string", "minLength": 12, "maxLength": 128, "writeOnly": true }
+        }
+      },
+      "OAuthIntentRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["provider"],
+        "properties": { "provider": { "$ref": "#/components/schemas/OAuthProvider" } }
+      },
+      "OAuthCompleteRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["intent_id", "identity_token"],
+        "properties": {
+          "intent_id": { "type": "string", "format": "uuid" },
+          "identity_token": { "type": "string", "minLength": 1, "writeOnly": true }
+        }
+      },
+      "RefreshRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["refresh_token"],
+        "properties": { "refresh_token": { "type": "string", "minLength": 40, "writeOnly": true } }
+      },
+      "User": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["user_id", "name", "email", "role", "status"],
+        "properties": {
+          "user_id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "email": { "type": "string", "format": "email", "maxLength": 254 },
+          "role": { "$ref": "#/components/schemas/Role" },
+          "status": { "$ref": "#/components/schemas/AccountStatus" }
+        }
+      },
+      "SessionData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["access_token", "access_token_expires_at", "refresh_token", "refresh_token_expires_at", "user"],
+        "properties": {
+          "access_token": { "type": "string", "minLength": 40, "readOnly": true },
+          "access_token_expires_at": { "type": "string", "format": "date-time" },
+          "refresh_token": { "type": "string", "minLength": 40, "readOnly": true },
+          "refresh_token_expires_at": { "type": "string", "format": "date-time" },
+          "user": { "$ref": "#/components/schemas/User" }
+        }
+      },
+      "SessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/SessionData" },
+          "meta": { "$ref": "#/components/schemas/ResponseMeta" }
+        }
+      },
+      "OAuthIntentData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["intent_id", "provider", "nonce", "expires_at"],
+        "properties": {
+          "intent_id": { "type": "string", "format": "uuid" },
+          "provider": { "$ref": "#/components/schemas/OAuthProvider" },
+          "nonce": { "type": "string", "minLength": 40, "readOnly": true },
+          "expires_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "OAuthIntentResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/OAuthIntentData" },
+          "meta": { "$ref": "#/components/schemas/ResponseMeta" }
+        }
+      },
+      "CurrentUserData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["user_id", "name", "email", "role", "status", "connected_providers"],
+        "properties": {
+          "user_id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "email": { "type": "string", "format": "email", "maxLength": 254 },
+          "role": { "$ref": "#/components/schemas/Role" },
+          "status": { "$ref": "#/components/schemas/AccountStatus" },
+          "connected_providers": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Provider" },
+            "uniqueItems": true
+          }
+        }
+      },
+      "CurrentUserResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/CurrentUserData" },
+          "meta": { "$ref": "#/components/schemas/ResponseMeta" }
+        }
+      },
+      "StatusResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status"],
+            "properties": { "status": { "type": "string", "enum": ["logged_out", "linked"] } }
+          },
+          "meta": { "$ref": "#/components/schemas/ResponseMeta" }
+        }
+      },
       "Error": {
         "type": "object",
         "additionalProperties": false,
@@ -74,7 +329,12 @@
         "properties": {
           "code": {
             "type": "string",
-            "enum": ["INVALID_REQUEST", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "ITEMS_UNAVAILABLE", "SERVICE_UNAVAILABLE", "INTERNAL_ERROR"]
+            "enum": [
+              "INVALID_REQUEST", "INVALID_CREDENTIALS", "INVALID_OAUTH_CREDENTIAL",
+              "INVALID_OAUTH_INTENT", "IDENTITY_LINK_REQUIRED", "IDENTITY_ALREADY_LINKED",
+              "ACCOUNT_DISABLED", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND",
+              "CONFLICT", "ITEMS_UNAVAILABLE", "SERVICE_UNAVAILABLE", "INTERNAL_ERROR"
+            ]
           },
           "message": { "type": "string", "minLength": 1 }
         }

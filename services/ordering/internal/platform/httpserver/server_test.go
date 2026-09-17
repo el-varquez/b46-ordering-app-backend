@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -72,5 +73,30 @@ func TestValidInboundCorrelationIDIsReturned(t *testing.T) {
 
 	if got := response.Header().Get(CorrelationHeader); got != "client-request-123" {
 		t.Fatalf("correlation ID = %q, want client-request-123", got)
+	}
+}
+
+func TestAccessLogOmitsCredentials(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	handler := NewHandler(logger, healthCheck(func(context.Context) error { return nil }), 1024)
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/missing",
+		strings.NewReader(`{"password":"credential-secret","refresh_token":"refresh-secret"}`),
+	)
+	request.Header.Set("Authorization", "Bearer access-secret")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	logged := output.String()
+	for _, secret := range []string{"credential-secret", "refresh-secret", "access-secret", "Authorization"} {
+		if strings.Contains(logged, secret) {
+			t.Fatalf("access log leaked %q: %s", secret, logged)
+		}
+	}
+	if !strings.Contains(logged, "correlation_id") {
+		t.Fatalf("access log omitted correlation ID: %s", logged)
 	}
 }

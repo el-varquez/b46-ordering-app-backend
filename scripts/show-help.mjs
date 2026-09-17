@@ -6,6 +6,7 @@ const commands = [
   ['db-reset', 'Recreate the disposable local database and migrate.'],
   ['migrate', 'Apply all Ordering database migrations.'],
   ['migrate-status', 'Show Ordering migration status.'],
+  ['bootstrap-admin', 'Create the initial Admin from runtime-only values.'],
   ['run', 'Start the Ordering API.'],
   ['fmt', 'Format all Go source.'],
   ['vet', 'Run Go static analysis.'],
@@ -15,7 +16,7 @@ const commands = [
   ['architecture', 'Check Clean Architecture dependency rules.'],
   ['contracts', 'Validate OpenAPI and versioned contracts.'],
   ['migrations-check', 'Validate migration structure.'],
-  ['check', 'Run every Phase 1 completion gate.'],
+  ['check', 'Run every completed backend gate through Phase 2.'],
 ];
 
 console.log('B46 backend commands:');

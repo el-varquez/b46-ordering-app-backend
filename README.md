@@ -1,9 +1,10 @@
 # B46 Ordering Backend
 
 Go modular monolith for B46 Ordering, plus the contract boundary for the future
-inventory adapter. Phase 1 supplies the production-shaped process foundation,
-PostgreSQL schema, versioned contracts, and enforceable architecture rules. It
-does not implement identity, ordering use cases, or inventory synchronization.
+inventory adapter. Phase 2 adds password and Google/Apple identity, opaque
+mobile sessions with rotating refresh tokens, authenticated current-user
+access, explicit OAuth linking, and audited initial Admin bootstrap. Ordering
+use cases and inventory synchronization remain later phases.
 
 ## Pinned toolchain
 
@@ -18,22 +19,49 @@ Go 1.27.1 and any container runtime supporting Compose are required. Node.js
 
 ```text
 copy .env.example .env
-docker compose up -d --wait postgres
-set DATABASE_URL=postgres://b46:b46_local_only@localhost:5432/b46_ordering?sslmode=disable
-go -C services/ordering run ./cmd/migrate -dir migrations up
-go -C services/ordering run ./cmd/api
+make db-reset
+make run
 ```
 
-PowerShell uses `$env:DATABASE_URL = "..."`; Bash uses `export DATABASE_URL="..."`.
-The API exposes `GET /v1/health/live` and `GET /v1/health/ready` on port 8080.
+Make loads `.env` automatically. Direct Go commands still require the variable
+in the current shell: PowerShell uses `$env:DATABASE_URL = "..."`; Bash uses
+`export DATABASE_URL="..."`.
+The API exposes health and identity routes on port 8080. Protected routes use
+`Authorization: Bearer <access-token>`; refresh tokens are accepted only by the
+refresh operation's JSON body. No browser cookie authentication is used.
 
-Run `make help` for all commands. `make check` is the single Phase 1 gate. Set
+Run `make help` for all commands. `make check` is the single Phase 2 gate. Set
 `TEST_DATABASE_URL` to a disposable migrated PostgreSQL database to include the
 database integration suite; CI always does this.
 
+## Initial Admin
+
+The backend has no public Admin-registration route. Supply the first Admin only
+at runtime, then remove the sensitive values from the shell:
+
+```powershell
+$env:B46_BOOTSTRAP_ADMIN_NAME = "B46 Admin"
+$env:B46_BOOTSTRAP_ADMIN_EMAIL = "admin@gmail.com"
+$env:B46_BOOTSTRAP_ADMIN_PASSWORD = Read-Host "Temporary Admin password"
+make bootstrap-admin
+Remove-Item Env:B46_BOOTSTRAP_ADMIN_NAME
+Remove-Item Env:B46_BOOTSTRAP_ADMIN_EMAIL
+Remove-Item Env:B46_BOOTSTRAP_ADMIN_PASSWORD
+```
+
+The same email is idempotent. A different email is rejected after the first
+Admin exists. The password is Argon2id-hashed and is never printed.
+
+## OAuth development configuration
+
+Set `GOOGLE_CLIENT_IDS` and `APPLE_CLIENT_IDS` to comma-separated Android/iOS
+audiences outside version control. Development may leave them empty; OAuth
+then fails closed. Production startup rejects missing provider audiences. The
+regular test suite signs local fixtures and never contacts live providers.
+
 ## Repository map
 
-- `services/ordering`: Ordering composition root and Phase 1 platform behavior.
+- `services/ordering`: Ordering composition root, platform, and Phase 2 identity module.
 - `services/inventory-adapter`: reserved structure; implementation starts in Phase 4.
 - `contracts/http`: source-of-truth OpenAPI contract.
 - `contracts/inventory/v1`: versioned Ordering/adapter JSON schemas and fixtures.
