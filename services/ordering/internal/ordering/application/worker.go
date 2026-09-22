@@ -2,11 +2,18 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/ports"
 )
+
+const defaultInventoryErrorCode = "INVENTORY_TECHNICAL"
+
+type codedError interface {
+	Code() string
+}
 
 type WorkerConfig struct {
 	PollInterval time.Duration
@@ -42,7 +49,7 @@ func (worker *Worker) ProcessOnce(ctx context.Context) (int, error) {
 		result, commitErr := worker.inventory.Commit(ctx, claimed.Commit)
 		if commitErr != nil {
 			next := now.Add(worker.retryDelay(claimed.AttemptCount))
-			if err := worker.store.RetryInventoryWork(ctx, claimed, next, "INVENTORY_TECHNICAL"); err != nil {
+			if err := worker.store.RetryInventoryWork(ctx, claimed, next, safeInventoryErrorCode(commitErr)); err != nil {
 				return 0, fmt.Errorf("schedule inventory retry: %w", err)
 			}
 			continue
@@ -52,6 +59,19 @@ func (worker *Worker) ProcessOnce(ctx context.Context) (int, error) {
 		}
 	}
 	return len(work), nil
+}
+
+func safeInventoryErrorCode(err error) string {
+	var coded codedError
+	if errors.As(err, &coded) {
+		switch coded.Code() {
+		case "INVENTORY_UNREACHABLE", "INVENTORY_TIMEOUT", "INVENTORY_THROTTLED",
+			"INVENTORY_UNAUTHORIZED", "INVENTORY_SERVER_ERROR", "INVENTORY_CONTRACT_REJECTED",
+			"INVENTORY_OPERATION_CONFLICT", "INVENTORY_INVALID_RESPONSE":
+			return coded.Code()
+		}
+	}
+	return defaultInventoryErrorCode
 }
 
 func (worker *Worker) Run(ctx context.Context) error {

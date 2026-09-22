@@ -107,3 +107,30 @@ func TestLoadRejectsWorkerLeaseShorterThanPoll(t *testing.T) {
 		t.Fatalf("Load() error = %v, want lease validation", err)
 	}
 }
+
+func TestLoadAcceptsHTTPInventoryAdapter(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/b46")
+	t.Setenv("INVENTORY_ADAPTER_MODE", "HTTP")
+	t.Setenv("INVENTORY_ADAPTER_URL", "http://127.0.0.1:8081")
+	t.Setenv("INVENTORY_ADAPTER_TOKEN", "local-placeholder-with-at-least-32-bytes")
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got.InventoryAdapterMode != "HTTP" || got.InventoryAdapterTimeout != 5*time.Second ||
+		got.InventoryMaxResponseBodyBytes != 256*1024 {
+		t.Fatalf("inventory config = %#v", got)
+	}
+}
+
+func TestProductionRejectsFakeInventoryAdapter(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/b46")
+	t.Setenv("GOOGLE_CLIENT_IDS", "google-client")
+	t.Setenv("APPLE_CLIENT_IDS", "apple-client")
+	t.Setenv("INVENTORY_ADAPTER_MODE", "FAKE")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "INVENTORY_ADAPTER_MODE") {
+		t.Fatalf("Load() error = %v, want production inventory validation", err)
+	}
+}

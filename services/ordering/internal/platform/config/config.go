@@ -30,34 +30,41 @@ const (
 	defaultOutboxLeaseTimeout   = 30 * time.Second
 	defaultOutboxRetryBase      = time.Second
 	defaultOutboxRetryMax       = time.Minute
+	defaultInventoryTimeout     = 5 * time.Second
+	defaultInventoryBodyBytes   = int64(256 * 1024)
 )
 
 // Config is the validated process configuration. It is created once at startup
 // and passed by value through the composition root.
 type Config struct {
-	Environment           string
-	HTTPAddress           string
-	DatabaseURL           string
-	LogLevel              slog.Level
-	HTTPReadTimeout       time.Duration
-	HTTPWriteTimeout      time.Duration
-	HTTPIdleTimeout       time.Duration
-	ShutdownTimeout       time.Duration
-	DatabaseHealthTimeout time.Duration
-	MaxRequestBodyBytes   int64
-	AccessTokenLifetime   time.Duration
-	RefreshTokenLifetime  time.Duration
-	OAuthIntentLifetime   time.Duration
-	ArgonMemoryKiB        uint32
-	ArgonIterations       uint32
-	ArgonParallelism      uint8
-	GoogleClientIDs       []string
-	AppleClientIDs        []string
-	OutboxPollInterval    time.Duration
-	OutboxBatchSize       int
-	OutboxLeaseTimeout    time.Duration
-	OutboxRetryBase       time.Duration
-	OutboxRetryMax        time.Duration
+	Environment                   string
+	HTTPAddress                   string
+	DatabaseURL                   string
+	LogLevel                      slog.Level
+	HTTPReadTimeout               time.Duration
+	HTTPWriteTimeout              time.Duration
+	HTTPIdleTimeout               time.Duration
+	ShutdownTimeout               time.Duration
+	DatabaseHealthTimeout         time.Duration
+	MaxRequestBodyBytes           int64
+	AccessTokenLifetime           time.Duration
+	RefreshTokenLifetime          time.Duration
+	OAuthIntentLifetime           time.Duration
+	ArgonMemoryKiB                uint32
+	ArgonIterations               uint32
+	ArgonParallelism              uint8
+	GoogleClientIDs               []string
+	AppleClientIDs                []string
+	OutboxPollInterval            time.Duration
+	OutboxBatchSize               int
+	OutboxLeaseTimeout            time.Duration
+	OutboxRetryBase               time.Duration
+	OutboxRetryMax                time.Duration
+	InventoryAdapterMode          string
+	InventoryAdapterURL           string
+	InventoryAdapterToken         string
+	InventoryAdapterTimeout       time.Duration
+	InventoryMaxResponseBodyBytes int64
 }
 
 // Load reads environment variables and rejects unsafe or malformed startup
@@ -185,30 +192,67 @@ func Load() (Config, error) {
 		return Config{}, errors.New("OUTBOX_RETRY_MAX must not be shorter than OUTBOX_RETRY_BASE")
 	}
 
+	inventoryMode := strings.ToUpper(envOrDefault("INVENTORY_ADAPTER_MODE", "FAKE"))
+	if inventoryMode != "FAKE" && inventoryMode != "HTTP" {
+		return Config{}, errors.New("INVENTORY_ADAPTER_MODE must be FAKE or HTTP")
+	}
+	if environment == "production" && inventoryMode != "HTTP" {
+		return Config{}, errors.New("INVENTORY_ADAPTER_MODE must be HTTP in production")
+	}
+	inventoryURL := strings.TrimSpace(os.Getenv("INVENTORY_ADAPTER_URL"))
+	inventoryToken := os.Getenv("INVENTORY_ADAPTER_TOKEN")
+	if inventoryMode == "HTTP" {
+		parsedURL, parseErr := url.Parse(inventoryURL)
+		if parseErr != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+			return Config{}, errors.New("INVENTORY_ADAPTER_URL must be an absolute HTTP(S) URL in HTTP mode")
+		}
+		if environment == "production" && parsedURL.Scheme != "https" {
+			return Config{}, errors.New("INVENTORY_ADAPTER_URL must use HTTPS in production")
+		}
+		if len([]byte(inventoryToken)) < 32 {
+			return Config{}, errors.New("INVENTORY_ADAPTER_TOKEN must contain at least 32 bytes in HTTP mode")
+		}
+	}
+	inventoryTimeout, err := boundedDuration(
+		"INVENTORY_ADAPTER_TIMEOUT", defaultInventoryTimeout, 100*time.Millisecond, outboxLeaseTimeout,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	inventoryBodyBytes, err := integer("INVENTORY_MAX_RESPONSE_BODY_BYTES", defaultInventoryBodyBytes)
+	if err != nil || inventoryBodyBytes < 1024 || inventoryBodyBytes > 1024*1024 {
+		return Config{}, errors.New("INVENTORY_MAX_RESPONSE_BODY_BYTES must be from 1024 to 1048576")
+	}
+
 	return Config{
-		Environment:           environment,
-		HTTPAddress:           net.JoinHostPort(host, port),
-		DatabaseURL:           databaseURL,
-		LogLevel:              logLevel,
-		HTTPReadTimeout:       readTimeout,
-		HTTPWriteTimeout:      writeTimeout,
-		HTTPIdleTimeout:       idleTimeout,
-		ShutdownTimeout:       shutdownTimeout,
-		DatabaseHealthTimeout: databaseHealthTimeout,
-		MaxRequestBodyBytes:   maxBodyBytes,
-		AccessTokenLifetime:   accessLifetime,
-		RefreshTokenLifetime:  refreshLifetime,
-		OAuthIntentLifetime:   oauthIntentLifetime,
-		ArgonMemoryKiB:        uint32(argonMemory),
-		ArgonIterations:       uint32(argonIterations),
-		ArgonParallelism:      uint8(argonParallelism),
-		GoogleClientIDs:       googleClientIDs,
-		AppleClientIDs:        appleClientIDs,
-		OutboxPollInterval:    outboxPollInterval,
-		OutboxBatchSize:       int(outboxBatchSize),
-		OutboxLeaseTimeout:    outboxLeaseTimeout,
-		OutboxRetryBase:       outboxRetryBase,
-		OutboxRetryMax:        outboxRetryMax,
+		Environment:                   environment,
+		HTTPAddress:                   net.JoinHostPort(host, port),
+		DatabaseURL:                   databaseURL,
+		LogLevel:                      logLevel,
+		HTTPReadTimeout:               readTimeout,
+		HTTPWriteTimeout:              writeTimeout,
+		HTTPIdleTimeout:               idleTimeout,
+		ShutdownTimeout:               shutdownTimeout,
+		DatabaseHealthTimeout:         databaseHealthTimeout,
+		MaxRequestBodyBytes:           maxBodyBytes,
+		AccessTokenLifetime:           accessLifetime,
+		RefreshTokenLifetime:          refreshLifetime,
+		OAuthIntentLifetime:           oauthIntentLifetime,
+		ArgonMemoryKiB:                uint32(argonMemory),
+		ArgonIterations:               uint32(argonIterations),
+		ArgonParallelism:              uint8(argonParallelism),
+		GoogleClientIDs:               googleClientIDs,
+		AppleClientIDs:                appleClientIDs,
+		OutboxPollInterval:            outboxPollInterval,
+		OutboxBatchSize:               int(outboxBatchSize),
+		OutboxLeaseTimeout:            outboxLeaseTimeout,
+		OutboxRetryBase:               outboxRetryBase,
+		OutboxRetryMax:                outboxRetryMax,
+		InventoryAdapterMode:          inventoryMode,
+		InventoryAdapterURL:           inventoryURL,
+		InventoryAdapterToken:         inventoryToken,
+		InventoryAdapterTimeout:       inventoryTimeout,
+		InventoryMaxResponseBodyBytes: inventoryBodyBytes,
 	}, nil
 }
 
