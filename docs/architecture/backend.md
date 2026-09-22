@@ -24,5 +24,8 @@ The Phase 1 runtime has one intentional seam: HTTP readiness depends on a
 Future clock, ID, transaction, repositories, and service ports are introduced
 with the use cases that need them, instead of as unused abstractions.
 
-The inventory adapter directory remains empty until Phase 4. The only current
-connection between those future processes is the versioned JSON contract.
+The inventory adapter is a separate deployable Go module. Ordering reaches it
+only through the private versioned HTTP contract and its `InventoryCommitter`
+port; neither module imports the other's implementation. The adapter owns one
+deep atomic commit interface that hides POS resolution, locking, deductions,
+movements, durable receipts, and exact replay.
