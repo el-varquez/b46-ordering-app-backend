@@ -8,7 +8,7 @@
   "items": [
     {
       "order_line_id": "1b4f1d4a-0e5b-421d-ab75-376db9a4fcab",
-      "product_id": "store-product-1042",
+	  "product_id": "b4600000-0000-4000-8001-000000000001",
       "requested_quantity": 2,
       "available_quantity": 0
     }

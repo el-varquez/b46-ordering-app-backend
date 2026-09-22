@@ -33,13 +33,27 @@ provides PostgreSQL 18.6 automatically.
 static analysis, race-enabled tests, and builds. With `TEST_DATABASE_URL` set,
 it also applies migrations twice and runs database integration tests.
 
+## Phase 4 inventory safety gate
+
+Before implementing or running the real inventory adapter, follow the locked
+[store database safety preflight](plans/phase-4-safety-preflight.md). Phase 4
+uses a separate disposable store database and cannot target retained `pos_db`
+data during automated tests. Retained integration stays disabled until the
+movement actor and least-privilege adapter database roles are provisioned and
+the compatibility check succeeds.
+
+The complete setup, environment reference, least-privilege grants, migration
+and rollback procedure, health behavior, token rotation, and retry runbook are
+in [inventory adapter operations](inventory-adapter-operations.md).
+
 ## Order lifecycle development
 
 The local API uses a deterministic checkout catalog containing `COKE-1.5L`,
 `TASTY-BREAD`, and `FRESH-MILK-1L`. Prices are integer centavos. Placing an
 order writes its line snapshots, pending inventory operation, and outbox event
-in one transaction. The in-process worker commits through the Phase 3 fake
-inventory adapter and creates the unread `PREPARING` fulfillment. There is no
+in one transaction. The in-process worker commits through the configured fake
+or private HTTP inventory adapter and creates the unread `PREPARING`
+fulfillment. There is no
 inventory-checking screen or cancellation state in the public contract.
 
 Customer routes require an exact `CUSTOMER` access token. Cashier routes under
@@ -54,9 +68,10 @@ a conflict. Order lists use `limit` and `after_id` keyset pagination. Opening a
 Cashier detail is read-only; call the separate `/read` action to clear its New
 badge.
 
-The fake catalog and inventory adapters exist only to prove the lifecycle.
-Phase 4 replaces the inventory fake through the existing `InventoryCommitter`
-interface; it must not move inventory details into the public HTTP response.
+The fake catalog and inventory adapter remain focused test/development seams.
+Real mode replaces the inventory fake through the existing
+`InventoryCommitter` interface and never moves inventory details into the
+public HTTP response.
 
 For the complete PostgreSQL suite, set `TEST_DATABASE_URL` to the disposable
 test database, migrate it to version 3, and run:

@@ -17,10 +17,12 @@ import (
 	identitytransport "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/transport"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/catalogfake"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/inventoryfake"
+	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/inventoryhttp"
 	orderingpostgres "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/postgres"
 	orderingsystem "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/system"
 	orderingapp "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/application"
 	orderingdomain "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/domain"
+	orderingports "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/ports"
 	orderingtransport "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/transport"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/platform/config"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/platform/httpserver"
@@ -88,15 +90,33 @@ func run() error {
 	ids := orderingsystem.IDs{}
 	clock := orderingsystem.Clock{}
 	catalog := catalogfake.New([]orderingdomain.ProductSnapshot{
-		{ProductID: "COKE-1.5L", Name: "Coke 1.5L", UnitPriceCentavos: 8200, Orderable: true},
-		{ProductID: "TASTY-BREAD", Name: "Tasty Bread", UnitPriceCentavos: 6800, Orderable: true},
-		{ProductID: "FRESH-MILK-1L", Name: "Fresh Milk 1L", UnitPriceCentavos: 9500, Orderable: true},
+		{ProductID: "b4600000-0000-4000-8001-000000000001", Name: "Coke 1.5L", UnitPriceCentavos: 8200, Orderable: true},
+		{ProductID: "b4600000-0000-4000-8001-000000000002", Name: "Tasty Bread", UnitPriceCentavos: 6800, Orderable: true},
+		{ProductID: "b4600000-0000-4000-8001-000000000003", Name: "Fresh Milk 1L", UnitPriceCentavos: 9500, Orderable: true},
 	})
 	orderingService := orderingapp.New(orderingStore, orderingStore, catalog, ids, clock)
 	orderingRoutes := orderingtransport.New(orderingService, httpserver.JSONResponder{}, identityRoutes.RequireRole)
+	var inventory orderingports.InventoryCommitter
+	switch processConfig.InventoryAdapterMode {
+	case "FAKE":
+		inventory = inventoryfake.New(ids, clock)
+	case "HTTP":
+		realInventory, createErr := inventoryhttp.New(
+			&http.Client{Timeout: processConfig.InventoryAdapterTimeout},
+			processConfig.InventoryAdapterURL,
+			processConfig.InventoryAdapterToken,
+			processConfig.InventoryMaxResponseBodyBytes,
+		)
+		if createErr != nil {
+			return createErr
+		}
+		inventory = realInventory
+	default:
+		return errors.New("unsupported inventory adapter mode")
+	}
 	worker := orderingapp.NewWorker(
 		orderingStore,
-		inventoryfake.New(ids, clock),
+		inventory,
 		clock,
 		orderingapp.WorkerConfig{
 			PollInterval: processConfig.OutboxPollInterval,

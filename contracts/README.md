@@ -9,6 +9,10 @@ history operations and Cashier queue, detail, read, and status operations.
 Customer schemas intentionally omit internal order states, inventory
 quantities, operation/event IDs, outbox state, claims, and retry metadata.
 
+`inventory/http/openapi.json` is the separate private service contract for the
+authenticated Ordering-to-adapter commit call and adapter health endpoints.
+It must never be merged into the mobile OpenAPI document.
+
 ## Stable vocabulary
 
 - Roles: `CUSTOMER`, `CASHIER`, `ADMIN`.
@@ -31,7 +35,7 @@ customer-visible order states.
 | `operation_id` | Ordering-owned identity for the whole order inventory deduction | All order items share one operation. The adapter returns one final `COMMITTED` or `ITEMS_UNAVAILABLE` result, and replay returns that result without deducting twice. |
 
 Ordering creates the order, inventory operation, and outbox row in one database
-transaction in a later phase. The adapter applies all items in one store-side
+transaction. The adapter applies all items in one store-side
 transaction. Events may be delivered more than once and consumers must be
 idempotent. Per-operation results are final and cannot change after completion.
 

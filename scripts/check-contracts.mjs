@@ -169,6 +169,25 @@ try {
   failures.push(`contracts/http/openapi.json: ${error.message}`);
 }
 
+try {
+  const privateOpenAPI = readJSON('contracts/inventory/http/openapi.json');
+  if (privateOpenAPI.openapi !== '3.1.1') failures.push('contracts/inventory/http/openapi.json: expected OpenAPI 3.1.1');
+  const commit = privateOpenAPI.paths?.['/inventory/commit']?.post;
+  if (!commit) failures.push('contracts/inventory/http/openapi.json: missing POST /inventory/commit');
+  if (JSON.stringify(commit?.security) !== JSON.stringify([{ serviceBearer: [] }])) {
+    failures.push('contracts/inventory/http/openapi.json: inventory commit must require serviceBearer');
+  }
+  for (const route of ['/health/live', '/health/ready']) {
+    if (!privateOpenAPI.paths?.[route]?.get) failures.push(`contracts/inventory/http/openapi.json: missing GET ${route}`);
+  }
+  const bearer = privateOpenAPI.components?.securitySchemes?.serviceBearer;
+  if (bearer?.type !== 'http' || bearer?.scheme !== 'bearer') {
+    failures.push('contracts/inventory/http/openapi.json: serviceBearer must be HTTP bearer authentication');
+  }
+} catch (error) {
+  failures.push(`contracts/inventory/http/openapi.json: ${error.message}`);
+}
+
 if (failures.length > 0) {
   console.error('check:contracts FAILED\n');
   failures.forEach((failure) => console.error(failure));
