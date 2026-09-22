@@ -41,3 +41,7 @@ type OutboxStore interface {
 	ApplyInventoryResult(context.Context, domain.ClaimedInventoryWork, domain.InventoryResult, time.Time) error
 	RetryInventoryWork(context.Context, domain.ClaimedInventoryWork, time.Time, string) error
 }
+
+type Notifier interface {
+	Notify(context.Context, domain.Notification) error
+}

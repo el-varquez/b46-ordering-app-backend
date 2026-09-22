@@ -160,6 +160,23 @@ type PlaceOrderResult struct {
 	Replayed bool
 }
 
+type NotificationKind string
+
+const (
+	NotificationOrderAccepted  NotificationKind = "ORDER_ACCEPTED"
+	NotificationOrderOnTheWay  NotificationKind = "ORDER_ON_THE_WAY"
+	NotificationOrderDelivered NotificationKind = "ORDER_DELIVERED"
+)
+
+type Notification struct {
+	EventID         string
+	Kind            NotificationKind
+	OrderID         string
+	RecipientUserID string
+	Audience        string
+	OccurredAt      time.Time
+}
+
 func (order Order) CustomerState() (CustomerState, error) {
 	switch order.Status {
 	case OrderSubmitted:
