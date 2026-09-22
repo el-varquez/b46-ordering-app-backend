@@ -116,6 +116,30 @@ for (const moduleFile of moduleFiles) {
       runWithEnvironment(['test', '-race', '-tags=integration', '-count=1', './...']);
     }
   }
+
+  if (process.env.STORE_TEST_DATABASE_URL && rel(moduleDir) === 'services/inventory-adapter') {
+    const environment = { ...process.env, STORE_DATABASE_URL: process.env.STORE_TEST_DATABASE_URL };
+    const runWithEnvironment = (args) => {
+      const display = `go ${args.join(' ')}`;
+      console.log(`\n[${rel(moduleDir)}] ${display}`);
+      const result = spawnSync('go', args, {
+        cwd: moduleDir,
+        encoding: 'utf8',
+        stdio: 'inherit',
+        env: environment,
+      });
+      if (result.error || result.status !== 0) {
+        console.error(`check:build-test FAILED — ${display} failed`);
+        process.exit(result.status ?? 1);
+      }
+    };
+    runWithEnvironment(['run', './cmd/migrate', '-dir', 'migrations', 'up']);
+    runWithEnvironment(['run', './cmd/migrate', '-dir', 'migrations', 'up']);
+    runWithEnvironment(['test', '-tags=integration', '-count=1', './...']);
+    if (cgo.status === 0 && cgo.stdout.trim() === '1') {
+      runWithEnvironment(['test', '-race', '-tags=integration', '-count=1', './...']);
+    }
+  }
 }
 
 console.log(`\ncheck:build-test OK — ${moduleFiles.length} Go module(s) built and tested`);
