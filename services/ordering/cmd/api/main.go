@@ -10,18 +10,23 @@ import (
 	"syscall"
 	"time"
 
+	cataloginventoryhttp "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/catalog/adapters/inventoryhttp"
+	catalogpostgres "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/catalog/adapters/postgres"
+	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/catalog/adapters/sourcefake"
+	catalogapp "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/catalog/application"
+	catalogports "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/catalog/ports"
+	catalogtransport "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/catalog/transport"
 	identityoauth "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/adapters/oauth"
 	identitypostgres "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/adapters/postgres"
 	identitysecurity "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/adapters/security"
 	identityapp "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/application"
 	identitytransport "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/transport"
-	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/catalogfake"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/inventoryfake"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/inventoryhttp"
+	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/notificationlog"
 	orderingpostgres "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/postgres"
 	orderingsystem "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/system"
 	orderingapp "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/application"
-	orderingdomain "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/domain"
 	orderingports "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/ports"
 	orderingtransport "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/transport"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/platform/config"
@@ -89,12 +94,37 @@ func run() error {
 	orderingStore := orderingpostgres.New(database.Pool())
 	ids := orderingsystem.IDs{}
 	clock := orderingsystem.Clock{}
-	catalog := catalogfake.New([]orderingdomain.ProductSnapshot{
-		{ProductID: "b4600000-0000-4000-8001-000000000001", Name: "Coke 1.5L", UnitPriceCentavos: 8200, Orderable: true},
-		{ProductID: "b4600000-0000-4000-8001-000000000002", Name: "Tasty Bread", UnitPriceCentavos: 6800, Orderable: true},
-		{ProductID: "b4600000-0000-4000-8001-000000000003", Name: "Fresh Milk 1L", UnitPriceCentavos: 9500, Orderable: true},
-	})
-	orderingService := orderingapp.New(orderingStore, orderingStore, catalog, ids, clock)
+	catalogStore := catalogpostgres.New(database.Pool())
+	var catalogSource catalogports.Source
+	inventoryHTTPClient := &http.Client{Timeout: processConfig.InventoryAdapterTimeout}
+	switch processConfig.InventoryAdapterMode {
+	case "FAKE":
+		catalogSource = sourcefake.Default()
+	case "HTTP":
+		realCatalog, createErr := cataloginventoryhttp.New(
+			inventoryHTTPClient, processConfig.InventoryAdapterURL, processConfig.InventoryAdapterToken,
+			processConfig.InventoryMaxResponseBodyBytes,
+		)
+		if createErr != nil {
+			return createErr
+		}
+		catalogSource = realCatalog
+	default:
+		return errors.New("unsupported inventory adapter mode")
+	}
+	catalogService, err := catalogapp.New(catalogSource, catalogStore, clock)
+	if err != nil {
+		return err
+	}
+	if err := catalogService.Sync(processContext); err != nil {
+		if processConfig.InventoryAdapterMode == "FAKE" {
+			return err
+		}
+		logger.Warn("initial catalog sync failed; serving the last valid snapshot", "error_class", "catalog_source_unavailable")
+	}
+	catalogRoutes := catalogtransport.New(catalogService, httpserver.JSONResponder{}, identityRoutes.RequireRole)
+	notifier := notificationlog.New(logger)
+	orderingService := orderingapp.New(orderingStore, orderingStore, checkoutCatalog{catalog: catalogStore}, ids, clock, notifier)
 	orderingRoutes := orderingtransport.New(orderingService, httpserver.JSONResponder{}, identityRoutes.RequireRole)
 	var inventory orderingports.InventoryCommitter
 	switch processConfig.InventoryAdapterMode {
@@ -102,7 +132,7 @@ func run() error {
 		inventory = inventoryfake.New(ids, clock)
 	case "HTTP":
 		realInventory, createErr := inventoryhttp.New(
-			&http.Client{Timeout: processConfig.InventoryAdapterTimeout},
+			inventoryHTTPClient,
 			processConfig.InventoryAdapterURL,
 			processConfig.InventoryAdapterToken,
 			processConfig.InventoryMaxResponseBodyBytes,
@@ -125,6 +155,7 @@ func run() error {
 			RetryBase:    processConfig.OutboxRetryBase,
 			RetryMax:     processConfig.OutboxRetryMax,
 		},
+		notifier,
 	)
 
 	server := httpserver.New(httpserver.Options{
@@ -135,7 +166,7 @@ func run() error {
 		MaxRequestBodyBytes: processConfig.MaxRequestBodyBytes,
 		Logger:              logger,
 		Readiness:           database,
-		Routes:              []httpserver.RouteRegistrar{identityRoutes, orderingRoutes},
+		Routes:              []httpserver.RouteRegistrar{identityRoutes, catalogRoutes, orderingRoutes},
 	})
 
 	serverError := make(chan error, 1)
@@ -148,6 +179,7 @@ func run() error {
 		logger.Info("inventory outbox worker started")
 		workerError <- worker.Run(processContext)
 	}()
+	go runCatalogSync(processContext, catalogService, processConfig.CatalogSyncInterval, logger)
 
 	select {
 	case <-processContext.Done():

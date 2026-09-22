@@ -2,8 +2,8 @@
   "openapi": "3.1.1",
   "info": {
     "title": "B46 Ordering API",
-    "version": "0.3.0",
-    "description": "Phase 3 contract for identity and the complete Customer/Cashier order lifecycle."
+    "version": "0.4.0",
+    "description": "Phase 5 mobile contract for identity, catalog, and the Customer/Cashier order lifecycle."
   },
   "servers": [{ "url": "http://localhost:8080" }],
   "paths": {
@@ -134,6 +134,31 @@
           "400": { "$ref": "#/components/responses/ErrorResponse" },
           "401": { "$ref": "#/components/responses/ErrorResponse" },
           "409": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/products": {
+      "get": {
+        "operationId": "listProducts",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/Limit" },
+          { "$ref": "#/components/parameters/AfterID" },
+          {
+            "name": "snapshot_revision",
+            "in": "query",
+            "required": false,
+            "description": "Revision returned by the first page; pass it unchanged on later pages.",
+            "schema": { "type": "integer", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/ProductListResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "409": { "$ref": "#/components/responses/ErrorResponse" },
+          "503": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
     },
@@ -290,6 +315,10 @@
       "StatusResponse": {
         "description": "The operation completed.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } }
+      },
+      "ProductListResponse": {
+        "description": "A stable keyset-paginated catalog snapshot without stock quantities.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductListEnvelope" } } }
       },
       "CustomerOrderResponse": {
         "description": "A Customer-safe order projection.",
@@ -467,6 +496,41 @@
           "meta": { "$ref": "#/components/schemas/ResponseMeta" }
         }
       },
+      "Product": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["product_id", "name", "description", "price_centavos", "category_id", "category_name", "image_url", "available"],
+        "properties": {
+          "product_id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "description": { "type": "string", "maxLength": 2000 },
+          "price_centavos": { "type": "integer", "minimum": 0 },
+          "category_id": { "type": "string", "format": "uuid" },
+          "category_name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "image_url": { "oneOf": [{ "type": "string", "format": "uri" }, { "type": "null" }] },
+          "available": { "type": "boolean" }
+        }
+      },
+      "ProductPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["products", "snapshot_revision", "after_id", "has_more"],
+        "properties": {
+          "products": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } },
+          "snapshot_revision": { "type": "integer", "minimum": 1 },
+          "after_id": { "type": "string" },
+          "has_more": { "type": "boolean" }
+        }
+      },
+      "ProductListEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/ProductPage" },
+          "meta": { "$ref": "#/components/schemas/ResponseMeta" }
+        }
+      },
       "PlaceOrderLineRequest": {
         "type": "object",
         "additionalProperties": false,
@@ -624,6 +688,7 @@
               "INVALID_OAUTH_INTENT", "IDENTITY_LINK_REQUIRED", "IDENTITY_ALREADY_LINKED",
               "ACCOUNT_DISABLED", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND",
               "CONFLICT", "CART_CHANGED", "ITEMS_UNAVAILABLE", "INVALID_TRANSITION",
+              "CATALOG_SNAPSHOT_EXPIRED", "CATALOG_UNAVAILABLE",
               "SERVICE_UNAVAILABLE", "INTERNAL_ERROR"
             ]
           },

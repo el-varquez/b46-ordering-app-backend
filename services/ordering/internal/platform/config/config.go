@@ -32,6 +32,7 @@ const (
 	defaultOutboxRetryMax       = time.Minute
 	defaultInventoryTimeout     = 5 * time.Second
 	defaultInventoryBodyBytes   = int64(256 * 1024)
+	defaultCatalogSyncInterval  = 30 * time.Second
 )
 
 // Config is the validated process configuration. It is created once at startup
@@ -65,6 +66,7 @@ type Config struct {
 	InventoryAdapterToken         string
 	InventoryAdapterTimeout       time.Duration
 	InventoryMaxResponseBodyBytes int64
+	CatalogSyncInterval           time.Duration
 }
 
 // Load reads environment variables and rejects unsafe or malformed startup
@@ -223,6 +225,12 @@ func Load() (Config, error) {
 	if err != nil || inventoryBodyBytes < 1024 || inventoryBodyBytes > 1024*1024 {
 		return Config{}, errors.New("INVENTORY_MAX_RESPONSE_BODY_BYTES must be from 1024 to 1048576")
 	}
+	catalogSyncInterval, err := boundedDuration(
+		"CATALOG_SYNC_INTERVAL", defaultCatalogSyncInterval, 5*time.Second, time.Hour,
+	)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
 		Environment:                   environment,
@@ -253,6 +261,7 @@ func Load() (Config, error) {
 		InventoryAdapterToken:         inventoryToken,
 		InventoryAdapterTimeout:       inventoryTimeout,
 		InventoryMaxResponseBodyBytes: inventoryBodyBytes,
+		CatalogSyncInterval:           catalogSyncInterval,
 	}, nil
 }
 
