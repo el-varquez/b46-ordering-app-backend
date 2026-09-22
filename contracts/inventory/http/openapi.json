@@ -1,0 +1,102 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "B46 Private Inventory Adapter API",
+    "version": "1.0.0",
+    "description": "Private service-to-service API. It is not part of the mobile contract."
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "operationId": "inventoryLiveness",
+        "responses": { "200": { "description": "Process is alive" } }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "inventoryReadiness",
+        "responses": {
+          "200": { "description": "Store schema and actor are ready" },
+          "503": { "description": "Store is not ready" }
+        }
+      }
+    },
+    "/inventory/commit": {
+      "post": {
+        "operationId": "commitInventory",
+        "security": [{ "serviceBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "../v1/inventory-commit-requested.schema.json" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Durable final business result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "../v1/inventory-committed.schema.json" },
+                    { "$ref": "../v1/inventory-items-unavailable.schema.json" }
+                  ]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/TechnicalError" },
+          "401": { "$ref": "#/components/responses/TechnicalError" },
+          "409": { "$ref": "#/components/responses/TechnicalError" },
+          "413": { "$ref": "#/components/responses/TechnicalError" },
+          "415": { "$ref": "#/components/responses/TechnicalError" },
+          "500": { "$ref": "#/components/responses/TechnicalError" },
+          "503": { "$ref": "#/components/responses/TechnicalError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "serviceBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "opaque service credential"
+      }
+    },
+    "schemas": {
+      "TechnicalError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "UNAUTHORIZED",
+              "CONTENT_TYPE_REQUIRED",
+              "INVALID_REQUEST",
+              "REQUEST_TOO_LARGE",
+              "OPERATION_CONFLICT",
+              "STORE_UNAVAILABLE",
+              "INTERNAL_ERROR",
+              "SERVICE_UNAVAILABLE"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "TechnicalError": {
+        "description": "Safe technical error",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/TechnicalError" }
+          }
+        }
+      }
+    }
+  }
+}

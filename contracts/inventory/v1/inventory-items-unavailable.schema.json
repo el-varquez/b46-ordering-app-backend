@@ -21,7 +21,7 @@
         "required": ["order_line_id", "product_id", "requested_quantity", "available_quantity"],
         "properties": {
           "order_line_id": { "type": "string", "format": "uuid" },
-          "product_id": { "type": "string", "minLength": 1, "maxLength": 100 },
+		  "product_id": { "type": "string", "format": "uuid" },
           "requested_quantity": { "type": "integer", "minimum": 1 },
           "available_quantity": { "type": "integer", "minimum": 0 }
         }
