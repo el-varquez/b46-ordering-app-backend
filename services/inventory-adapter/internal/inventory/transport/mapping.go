@@ -55,3 +55,19 @@ func resultFromDomain(value domain.CommitResult) commitResponse {
 	}
 	return response
 }
+
+func catalogFromDomain(value domain.CatalogPage) catalogPageResponse {
+	response := catalogPageResponse{Products: make([]catalogProductResponse, 0, len(value.Products))}
+	if value.NextAfterID != uuid.Nil {
+		response.NextAfterID = value.NextAfterID.String()
+	}
+	for _, product := range value.Products {
+		response.Products = append(response.Products, catalogProductResponse{
+			ProductID: product.ProductID.String(), Name: product.Name, Description: product.Description,
+			PriceCentavos: product.PriceCentavos, CategoryID: product.CategoryID.String(),
+			CategoryName: product.CategoryName, Available: product.Available,
+			SourceUpdatedAt: product.SourceUpdatedAt.UTC().Format(time.RFC3339Nano),
+		})
+	}
+	return response
+}

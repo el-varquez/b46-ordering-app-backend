@@ -9,17 +9,24 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/el-varquez/b46-ordering-app-backend/services/inventory-adapter/internal/inventory/domain"
+	"github.com/google/uuid"
 )
 
 type commitService interface {
 	Commit(context.Context, domain.CommitCommand) (domain.CommitResult, error)
 }
 
+type catalogService interface {
+	Catalog(context.Context, domain.CatalogQuery) (domain.CatalogPage, error)
+}
+
 type Routes struct {
 	service      commitService
+	catalog      catalogService
 	tokenDigest  [32]byte
 	maxBodyBytes int64
 	logger       *slog.Logger
@@ -29,11 +36,53 @@ func New(service commitService, tokenDigest [32]byte, maxBodyBytes int64, logger
 	if service == nil || maxBodyBytes <= 0 || logger == nil {
 		return nil, errors.New("inventory transport: service, body limit, and logger are required")
 	}
-	return &Routes{service: service, tokenDigest: tokenDigest, maxBodyBytes: maxBodyBytes, logger: logger}, nil
+	catalog, _ := service.(catalogService)
+	return &Routes{service: service, catalog: catalog, tokenDigest: tokenDigest, maxBodyBytes: maxBodyBytes, logger: logger}, nil
 }
 
 func (routes *Routes) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /inventory/commit", routes.commit)
+	mux.HandleFunc("GET /catalog/products", routes.products)
+}
+
+func (routes *Routes) products(writer http.ResponseWriter, request *http.Request) {
+	if !routes.authorized(request) {
+		writeError(writer, http.StatusUnauthorized, "UNAUTHORIZED")
+		return
+	}
+	if routes.catalog == nil {
+		writeError(writer, http.StatusServiceUnavailable, "STORE_UNAVAILABLE")
+		return
+	}
+	limit := 100
+	if raw := strings.TrimSpace(request.URL.Query().Get("limit")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil {
+			writeError(writer, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+		limit = value
+	}
+	afterID := uuid.Nil
+	if raw := strings.TrimSpace(request.URL.Query().Get("after_id")); raw != "" {
+		value, err := uuid.Parse(raw)
+		if err != nil {
+			writeError(writer, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+		afterID = value
+	}
+	page, err := routes.catalog.Catalog(request.Context(), domain.CatalogQuery{Limit: limit, AfterID: afterID})
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidCatalogQuery) {
+			writeError(writer, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+		routes.logger.ErrorContext(request.Context(), "catalog read failed", "error_class", "internal")
+		writeError(writer, http.StatusServiceUnavailable, "STORE_UNAVAILABLE")
+		return
+	}
+	writeJSON(writer, http.StatusOK, catalogFromDomain(page))
 }
 
 func (routes *Routes) commit(writer http.ResponseWriter, request *http.Request) {
