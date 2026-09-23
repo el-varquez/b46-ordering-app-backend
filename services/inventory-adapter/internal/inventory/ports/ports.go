@@ -12,6 +12,10 @@ type CommitStore interface {
 	Commit(context.Context, domain.CommitCommand, string) (domain.CommitResult, error)
 }
 
+type CatalogStore interface {
+	Catalog(context.Context, domain.CatalogQuery) (domain.CatalogPage, error)
+}
+
 type IDGenerator interface {
 	New() uuid.UUID
 }

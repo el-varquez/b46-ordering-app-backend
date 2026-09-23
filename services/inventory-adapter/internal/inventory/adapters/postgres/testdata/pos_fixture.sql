@@ -1,6 +1,7 @@
 DROP TABLE IF EXISTS public."StockMovements" CASCADE;
 DROP TABLE IF EXISTS public."CompositeItems" CASCADE;
 DROP TABLE IF EXISTS public."Items" CASCADE;
+DROP TABLE IF EXISTS public."Categories" CASCADE;
 DROP TABLE IF EXISTS public."Users" CASCADE;
 
 CREATE TABLE public."Users" (
@@ -15,12 +16,35 @@ CREATE TABLE public."Users" (
     "UpdatedAt" timestamptz
 );
 
+CREATE TABLE public."Categories" (
+    "Id" uuid PRIMARY KEY,
+    "Name" text NOT NULL,
+    "Description" text,
+    "IsSystem" boolean NOT NULL DEFAULT false,
+    "CreatedAt" timestamptz NOT NULL,
+    "UpdatedAt" timestamptz
+);
+
+INSERT INTO public."Categories" (
+    "Id", "Name", "Description", "CreatedAt"
+) VALUES (
+    'b4600000-0000-4000-8002-000000000001',
+    'Daily essentials',
+    'Disposable adapter test category',
+    '2026-09-20T00:00:00Z'
+);
+
 CREATE TABLE public."Items" (
     "Id" uuid PRIMARY KEY,
+	"Name" text NOT NULL DEFAULT '',
+	"Description" text,
+	"SellingPrice" numeric(18,2) NOT NULL DEFAULT 0,
     "Stock" integer NOT NULL,
     "IsActive" boolean NOT NULL,
     "TracksStock" boolean NOT NULL,
     "IsComposite" boolean NOT NULL,
+	"CategoryId" uuid NOT NULL DEFAULT 'b4600000-0000-4000-8002-000000000001' REFERENCES public."Categories"("Id"),
+	"CreatedAt" timestamptz NOT NULL DEFAULT now(),
     "UpdatedAt" timestamptz
 );
 
@@ -59,10 +83,10 @@ INSERT INTO public."Users" (
 );
 
 INSERT INTO public."Items" (
-    "Id", "Stock", "IsActive", "TracksStock", "IsComposite", "UpdatedAt"
+    "Id", "Name", "Description", "SellingPrice", "Stock", "IsActive", "TracksStock", "IsComposite", "UpdatedAt"
 ) VALUES
-    ('b4600000-0000-4000-8001-000000000001', 25, true, true, false, '2026-09-20T00:00:00Z'),
-    ('b4600000-0000-4000-8001-000000000002', 25, true, true, false, '2026-09-20T00:00:00Z'),
-    ('b4600000-0000-4000-8001-000000000003', 25, true, true, false, '2026-09-20T00:00:00Z');
+    ('b4600000-0000-4000-8001-000000000001', 'Coke 1.5L', 'Chilled bottle', 82.00, 25, true, true, false, '2026-09-20T00:00:00Z'),
+    ('b4600000-0000-4000-8001-000000000002', 'Tasty Bread', '600 g loaf', 68.00, 25, true, true, false, '2026-09-20T00:00:00Z'),
+    ('b4600000-0000-4000-8001-000000000003', 'Fresh Milk 1L', 'Fresh dairy', 95.00, 25, true, true, false, '2026-09-20T00:00:00Z');
 
 TRUNCATE b46_adapter.inventory_commit_receipts;

@@ -234,6 +234,40 @@ func TestCompatiblePOSSaleAndOnlineOrderCannotBothConsumeLastUnit(t *testing.T) 
 	assertStock(t, pool, productID, 0)
 }
 
+func TestCatalogUsesExactPricesKeysetPaginationAndPublicAvailability(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	page, err := store.Catalog(context.Background(), domain.CatalogQuery{Limit: 2})
+	if err != nil {
+		t.Fatalf("Catalog() first page error = %v", err)
+	}
+	if len(page.Products) != 2 || page.NextAfterID == uuid.Nil {
+		t.Fatalf("first page = %#v", page)
+	}
+	if page.Products[0].PriceCentavos != 8200 || page.Products[0].Name != "Coke 1.5L" {
+		t.Fatalf("first product = %#v", page.Products[0])
+	}
+	second, err := store.Catalog(context.Background(), domain.CatalogQuery{Limit: 2, AfterID: page.NextAfterID})
+	if err != nil || len(second.Products) != 1 || second.NextAfterID != uuid.Nil {
+		t.Fatalf("second page = (%#v, %v)", second, err)
+	}
+
+	unavailable := uuid.New()
+	insertItem(t, pool, unavailable, 0, true, true, false)
+	nonStock := uuid.New()
+	insertItem(t, pool, nonStock, 0, true, false, false)
+	all, err := store.Catalog(context.Background(), domain.CatalogQuery{Limit: 100})
+	if err != nil {
+		t.Fatalf("Catalog() availability page error = %v", err)
+	}
+	availability := make(map[uuid.UUID]bool, len(all.Products))
+	for _, product := range all.Products {
+		availability[product.ProductID] = product.Available
+	}
+	if availability[unavailable] || !availability[nonStock] {
+		t.Fatalf("availability = %#v", availability)
+	}
+}
+
 func TestDatabaseReadinessFailsClosedOnIncompatiblePOSColumn(t *testing.T) {
 	_, pool := newIntegrationStore(t)
 	database := &Database{pool: pool, healthTimeout: time.Second, actorID: testActorID}
@@ -311,9 +345,9 @@ func testCommand(lines ...domain.Line) domain.CommitCommand {
 func insertItem(t *testing.T, pool *pgxpool.Pool, id uuid.UUID, stock int, active, tracked, composite bool) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(), `
-		INSERT INTO public."Items" ("Id", "Stock", "IsActive", "TracksStock", "IsComposite", "UpdatedAt")
-		VALUES ($1, $2, $3, $4, $5, now())
-	`, id.String(), stock, active, tracked, composite)
+		INSERT INTO public."Items" ("Id", "Name", "SellingPrice", "Stock", "IsActive", "TracksStock", "IsComposite", "UpdatedAt")
+		VALUES ($1, $2, 1.25, $3, $4, $5, $6, now())
+	`, id.String(), id.String(), stock, active, tracked, composite)
 	if err != nil {
 		t.Fatalf("insert item: %v", err)
 	}

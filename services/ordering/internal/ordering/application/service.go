@@ -27,6 +27,7 @@ type Service struct {
 	catalog   ports.CheckoutCatalog
 	ids       ports.IDGenerator
 	clock     ports.Clock
+	notifier  ports.Notifier
 }
 
 func New(
@@ -35,8 +36,13 @@ func New(
 	catalog ports.CheckoutCatalog,
 	ids ports.IDGenerator,
 	clock ports.Clock,
+	notifiers ...ports.Notifier,
 ) *Service {
-	return &Service{checkouts: checkouts, queries: queries, catalog: catalog, ids: ids, clock: clock}
+	notifier := ports.Notifier(discardNotifier{})
+	if len(notifiers) > 0 && notifiers[0] != nil {
+		notifier = notifiers[0]
+	}
+	return &Service{checkouts: checkouts, queries: queries, catalog: catalog, ids: ids, clock: clock, notifier: notifier}
 }
 
 func (service *Service) PlaceOrder(ctx context.Context, command domain.PlaceOrderCommand) (domain.PlaceOrderResult, error) {
@@ -239,5 +245,19 @@ func (service *Service) AdvanceFulfillment(ctx context.Context, cashierID, order
 	if err != nil && !errors.Is(err, domain.ErrInvalidTransition) {
 		return domain.Order{}, err
 	}
+	if err == nil {
+		kind := domain.NotificationOrderOnTheWay
+		if target == domain.FulfillmentDelivered {
+			kind = domain.NotificationOrderDelivered
+		}
+		_ = service.notifier.Notify(ctx, domain.Notification{
+			EventID: order.ID + ":" + string(kind), Kind: kind, OrderID: order.ID,
+			RecipientUserID: order.CustomerID, Audience: "CUSTOMER", OccurredAt: service.clock.Now().UTC(),
+		})
+	}
 	return order, err
 }
+
+type discardNotifier struct{}
+
+func (discardNotifier) Notify(context.Context, domain.Notification) error { return nil }

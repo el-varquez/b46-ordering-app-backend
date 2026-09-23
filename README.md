@@ -1,9 +1,9 @@
 # B46 Ordering Backend
 
-Go modular monolith for B46 Ordering, plus the contract boundary for the future
-inventory adapter. Phase 3 proves idempotent checkout, the transactional
-outbox, fake inventory outcomes, Customer order history, the Cashier queue,
-and the Preparing to Delivering to Delivered lifecycle. Password and
+Go modular monolith for B46 Ordering and its isolated inventory adapter.
+Through Phase 5 it provides a POS-backed, quantity-free mobile catalog,
+idempotent checkout, the transactional outbox, Customer order status, the
+Cashier queue, and the Preparing to Delivering to Delivered lifecycle. Password and
 Google/Apple identity use opaque mobile sessions with rotating refresh tokens.
 
 ## Pinned toolchain
@@ -26,12 +26,12 @@ make run
 Make loads `.env` automatically. Direct Go commands still require the variable
 in the current shell: PowerShell uses `$env:DATABASE_URL = "..."`; Bash uses
 `export DATABASE_URL="..."`.
-The API exposes health, identity, Customer-order, and Cashier-order routes on
+The API exposes health, identity, catalog, Customer-order, and Cashier-order routes on
 port 8080. Protected routes use
 `Authorization: Bearer <access-token>`; refresh tokens are accepted only by the
 refresh operation's JSON body. No browser cookie authentication is used.
 
-Run `make help` for all commands. `make check` is the single Phase 3 gate. Set
+Run `make help` for all commands. `make check` is the single completed backend gate. Set
 `TEST_DATABASE_URL` to a disposable migrated PostgreSQL database to include the
 database integration suite; CI always does this.
 
@@ -62,13 +62,13 @@ regular test suite signs local fixtures and never contacts live providers.
 
 ## Repository map
 
-- `services/ordering`: Ordering composition root, identity, order lifecycle, and worker.
-- `services/inventory-adapter`: reserved structure; implementation starts in Phase 4.
+- `services/ordering`: Ordering composition root, identity, catalog snapshots, order lifecycle, and workers.
+- `services/inventory-adapter`: private POS catalog reader and atomic inventory committer.
 - `contracts/http`: source-of-truth OpenAPI contract.
 - `contracts/inventory/v1`: versioned Ordering/adapter JSON schemas and fixtures.
 - `architecture`: dependency lock and architecture-checker self-test.
 - `scripts`: the same gates used locally and in CI.
-- `docs`: architecture, contracts, migration, and troubleshooting guidance.
+- Shared `b46-ordering-app/docs`: architecture, development, and planning guidance outside this repository.
 
 ## Continuous Integration
 
@@ -93,5 +93,7 @@ node scripts/check-migrations.mjs
 node scripts/check-conventions.mjs --branch ci/example --subject "ci: add checks"
 ```
 
-See [backend architecture](docs/architecture/backend.md), [contracts](contracts/README.md),
-and the [developer workflow](docs/development.md) before changing lifecycle code.
+See `b46-ordering-app/docs/architecture/backend.md` and
+`b46-ordering-app/docs/backend-development.md` in the shared planning
+workspace, plus [contracts](contracts/README.md), before changing lifecycle
+code.

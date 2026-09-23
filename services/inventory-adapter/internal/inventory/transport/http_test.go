@@ -20,14 +20,44 @@ import (
 const testToken = "test-token-with-at-least-thirty-two-bytes"
 
 type fakeService struct {
-	result domain.CommitResult
-	err    error
-	calls  int
+	result        domain.CommitResult
+	err           error
+	calls         int
+	catalogResult domain.CatalogPage
+	catalogErr    error
+	catalogCalls  int
 }
 
 func (service *fakeService) Commit(_ context.Context, _ domain.CommitCommand) (domain.CommitResult, error) {
 	service.calls++
 	return service.result, service.err
+}
+
+func (service *fakeService) Catalog(_ context.Context, _ domain.CatalogQuery) (domain.CatalogPage, error) {
+	service.catalogCalls++
+	return service.catalogResult, service.catalogErr
+}
+
+func TestCatalogRequiresAuthenticationAndHidesStockQuantity(t *testing.T) {
+	service := &fakeService{catalogResult: domain.CatalogPage{Products: []domain.CatalogProduct{{
+		ProductID: uuid.MustParse("b4600000-0000-4000-8001-000000000001"), Name: "Coke", Description: "Cold",
+		PriceCentavos: 8200, CategoryID: uuid.MustParse("b4600000-0000-4000-8002-000000000001"),
+		CategoryName: "Drinks", Available: true, SourceUpdatedAt: time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC),
+	}}}}
+	handler := testHandler(t, service, 4096)
+	request := httptest.NewRequest(http.MethodGet, "/catalog/products?limit=20", nil)
+	unauthorized := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorized, request)
+	if unauthorized.Code != http.StatusUnauthorized || service.catalogCalls != 0 {
+		t.Fatalf("unauthorized response = %d, calls = %d", unauthorized.Code, service.catalogCalls)
+	}
+	request = httptest.NewRequest(http.MethodGet, "/catalog/products?limit=20", nil)
+	request.Header.Set("Authorization", "Bearer "+testToken)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"price_centavos":8200`) || strings.Contains(response.Body.String(), "stock") {
+		t.Fatalf("catalog response = %d %s", response.Code, response.Body.String())
+	}
 }
 
 func TestCommitRequiresAuthenticationAndStrictContract(t *testing.T) {

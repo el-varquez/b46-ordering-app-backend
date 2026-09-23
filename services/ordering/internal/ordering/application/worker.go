@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/domain"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/ports"
 )
 
@@ -28,6 +29,7 @@ type Worker struct {
 	inventory ports.InventoryCommitter
 	clock     ports.Clock
 	config    WorkerConfig
+	notifier  ports.Notifier
 }
 
 func NewWorker(
@@ -35,8 +37,13 @@ func NewWorker(
 	inventory ports.InventoryCommitter,
 	clock ports.Clock,
 	config WorkerConfig,
+	notifiers ...ports.Notifier,
 ) *Worker {
-	return &Worker{store: store, inventory: inventory, clock: clock, config: config}
+	notifier := ports.Notifier(discardNotifier{})
+	if len(notifiers) > 0 && notifiers[0] != nil {
+		notifier = notifiers[0]
+	}
+	return &Worker{store: store, inventory: inventory, clock: clock, config: config, notifier: notifier}
 }
 
 func (worker *Worker) ProcessOnce(ctx context.Context) (int, error) {
@@ -56,6 +63,13 @@ func (worker *Worker) ProcessOnce(ctx context.Context) (int, error) {
 		}
 		if err := worker.store.ApplyInventoryResult(ctx, claimed, result, now); err != nil {
 			return 0, fmt.Errorf("apply inventory result: %w", err)
+		}
+		if result.Status == domain.InventoryCommitted {
+			_ = worker.notifier.Notify(ctx, domain.Notification{
+				EventID: result.EventID + ":" + string(domain.NotificationOrderAccepted),
+				Kind:    domain.NotificationOrderAccepted, OrderID: result.OrderID,
+				Audience: "CASHIER", OccurredAt: now,
+			})
 		}
 	}
 	return len(work), nil

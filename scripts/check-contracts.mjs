@@ -65,6 +65,7 @@ for (const [schemaPath, examplePath] of pairs) {
 try {
   const openapi = readJSON('contracts/http/openapi.json');
   if (openapi.openapi !== '3.1.1') failures.push('contracts/http/openapi.json: expected OpenAPI 3.1.1');
+  if (openapi.info?.version !== '0.4.0') failures.push('contracts/http/openapi.json: expected Phase 5 version 0.4.0');
   for (const route of ['/v1/health/live', '/v1/health/ready']) {
     if (!openapi.paths?.[route]?.get) failures.push(`contracts/http/openapi.json: missing GET ${route}`);
   }
@@ -84,6 +85,7 @@ try {
     }
   }
   const orderingOperations = [
+    ['get', '/v1/products'],
     ['post', '/v1/orders'],
     ['get', '/v1/orders'],
     ['get', '/v1/orders/{order_id}'],
@@ -131,6 +133,10 @@ try {
     if (JSON.stringify(actual) !== JSON.stringify(values)) failures.push(`contracts/http/openapi.json: ${schema} vocabulary drifted`);
   }
   const serialized = JSON.stringify(openapi.components?.schemas ?? {});
+  const productProperties = Object.keys(openapi.components?.schemas?.Product?.properties ?? {});
+  for (const forbidden of ['stock', 'quantity', 'cost_price', 'low_stock_threshold']) {
+    if (productProperties.includes(forbidden)) failures.push(`contracts/http/openapi.json: Product exposes ${forbidden}`);
+  }
   const errorCodes = openapi.components?.schemas?.Error?.properties?.code?.enum ?? [];
   for (const code of [
     'INVALID_CREDENTIALS',
@@ -176,6 +182,11 @@ try {
   if (!commit) failures.push('contracts/inventory/http/openapi.json: missing POST /inventory/commit');
   if (JSON.stringify(commit?.security) !== JSON.stringify([{ serviceBearer: [] }])) {
     failures.push('contracts/inventory/http/openapi.json: inventory commit must require serviceBearer');
+  }
+  const catalog = privateOpenAPI.paths?.['/catalog/products']?.get;
+  if (!catalog) failures.push('contracts/inventory/http/openapi.json: missing GET /catalog/products');
+  if (JSON.stringify(catalog?.security) !== JSON.stringify([{ serviceBearer: [] }])) {
+    failures.push('contracts/inventory/http/openapi.json: catalog query must require serviceBearer');
   }
   for (const route of ['/health/live', '/health/ready']) {
     if (!privateOpenAPI.paths?.[route]?.get) failures.push(`contracts/inventory/http/openapi.json: missing GET ${route}`);
