@@ -128,9 +128,41 @@ func TestProductionRejectsFakeInventoryAdapter(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/b46")
 	t.Setenv("GOOGLE_CLIENT_IDS", "google-client")
 	t.Setenv("APPLE_CLIENT_IDS", "apple-client")
+	t.Setenv("REGISTRATION_CODE_KEY", "example-test-key-with-at-least-32-bytes")
+	t.Setenv("SMTP_HOST", "mail.example.test")
+	t.Setenv("SMTP_FROM", "hello@example.test")
+	t.Setenv("SMTP_USERNAME", "hello@example.test")
+	t.Setenv("SMTP_PASSWORD", "test-only-password")
 	t.Setenv("INVENTORY_ADAPTER_MODE", "FAKE")
 	_, err := Load()
 	if err == nil || !strings.Contains(err.Error(), "INVENTORY_ADAPTER_MODE") {
 		t.Fatalf("Load() error = %v, want production inventory validation", err)
+	}
+}
+
+func TestProductionRequiresRegistrationSecretsButNotAppleAudience(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/b46")
+	t.Setenv("GOOGLE_CLIENT_IDS", "google-client")
+	t.Setenv("APPLE_CLIENT_IDS", "")
+	t.Setenv("REGISTRATION_CODE_KEY", "")
+	t.Setenv("SMTP_HOST", "mail.example.test")
+	t.Setenv("SMTP_FROM", "hello@example.test")
+	t.Setenv("SMTP_USERNAME", "hello@example.test")
+	t.Setenv("SMTP_PASSWORD", "test-only-password")
+	t.Setenv("INVENTORY_ADAPTER_MODE", "HTTP")
+	t.Setenv("INVENTORY_ADAPTER_URL", "https://inventory.example.test")
+	t.Setenv("INVENTORY_ADAPTER_TOKEN", "example-inventory-token-at-least-32-bytes")
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "REGISTRATION_CODE_KEY") {
+		t.Fatalf("Load() error = %v, want registration key validation", err)
+	}
+	t.Setenv("REGISTRATION_CODE_KEY", "example-registration-key-at-least-32-bytes")
+	if _, err := Load(); err != nil {
+		t.Fatalf("production should allow Google-only audience: %v", err)
+	}
+	t.Setenv("SMTP_ALLOW_INSECURE_LOCAL", "true")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "insecure SMTP") {
+		t.Fatalf("Load() error = %v, want production SMTP TLS validation", err)
 	}
 }

@@ -487,10 +487,10 @@ func TestUnverifiedOAuthEmailCannotCreateCustomer(t *testing.T) {
 	clock := &adjustableClock{now: time.Now().UTC().Add(time.Second)}
 	email := fmt.Sprintf("unverified-%d@example.test", time.Now().UnixNano())
 	service := identityService(t, pool, clock, hasher, staticOAuthVerifier{identity: domain.VerifiedIdentity{
-		Provider: domain.ProviderApple, Subject: "unverified-" + email,
+		Provider: domain.ProviderGoogle, Subject: "unverified-" + email,
 		Email: email, EmailVerified: false, SuggestedName: "Unverified",
 	}})
-	intent, err := service.BeginOAuthLogin(context.Background(), domain.ProviderApple)
+	intent, err := service.BeginOAuthLogin(context.Background(), domain.ProviderGoogle)
 	if err != nil {
 		t.Fatalf("BeginOAuthLogin() error = %v", err)
 	}

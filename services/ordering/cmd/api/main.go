@@ -19,7 +19,9 @@ import (
 	identityoauth "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/adapters/oauth"
 	identitypostgres "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/adapters/postgres"
 	identitysecurity "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/adapters/security"
+	identitysmtp "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/adapters/smtp"
 	identityapp "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/application"
+	identityports "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/ports"
 	identitytransport "github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/identity/transport"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/inventoryfake"
 	"github.com/el-varquez/b46-ordering-app-backend/services/ordering/internal/ordering/adapters/inventoryhttp"
@@ -75,8 +77,9 @@ func run() error {
 		processConfig.GoogleClientIDs,
 		processConfig.AppleClientIDs,
 	)
+	identityStore := identitypostgres.New(database.Pool())
 	identityService, err := identityapp.New(
-		identitypostgres.New(database.Pool()),
+		identityStore,
 		passwordHasher,
 		identitysecurity.RandomTokenGenerator{},
 		identitysecurity.SystemClock{},
@@ -91,6 +94,33 @@ func run() error {
 		return err
 	}
 	identityRoutes := identitytransport.New(identityService, httpserver.JSONResponder{})
+	registrationKey := processConfig.RegistrationCodeKey
+	if registrationKey == "" {
+		registrationKey, err = (identitysecurity.RandomTokenGenerator{}).New()
+		if err != nil {
+			return err
+		}
+		logger.Warn("registration code key is ephemeral; pending codes will expire on restart")
+	}
+	var mailer identityports.VerificationMailer = identitysmtp.DisabledSender{}
+	if processConfig.SMTPHost != "" {
+		mailer, err = identitysmtp.New(processConfig.SMTPHost, processConfig.SMTPPort, processConfig.SMTPFrom,
+			processConfig.SMTPUsername, processConfig.SMTPPassword, processConfig.SMTPAllowInsecureLocal)
+		if err != nil {
+			return err
+		}
+		mailer, err = identitysmtp.NewQueue(processContext, mailer, 16)
+		if err != nil {
+			return err
+		}
+	}
+	registrationService, err := identityapp.NewRegistrationService(
+		identityService, identityStore, mailer, identitysecurity.SixDigitCodeGenerator{}, []byte(registrationKey),
+	)
+	if err != nil {
+		return err
+	}
+	registrationRoutes := identitytransport.NewRegistration(registrationService, httpserver.JSONResponder{})
 	orderingStore := orderingpostgres.New(database.Pool())
 	ids := orderingsystem.IDs{}
 	clock := orderingsystem.Clock{}
@@ -166,7 +196,7 @@ func run() error {
 		MaxRequestBodyBytes: processConfig.MaxRequestBodyBytes,
 		Logger:              logger,
 		Readiness:           database,
-		Routes:              []httpserver.RouteRegistrar{identityRoutes, catalogRoutes, orderingRoutes},
+		Routes:              []httpserver.RouteRegistrar{identityRoutes, registrationRoutes, catalogRoutes, orderingRoutes},
 	})
 
 	serverError := make(chan error, 1)
@@ -180,6 +210,20 @@ func run() error {
 		workerError <- worker.Run(processContext)
 	}()
 	go runCatalogSync(processContext, catalogService, processConfig.CatalogSyncInterval, logger)
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-processContext.Done():
+				return
+			case <-ticker.C:
+				if err := registrationService.Cleanup(processContext); err != nil {
+					logger.Warn("registration cleanup failed", "error_class", "registration_cleanup")
+				}
+			}
+		}
+	}()
 
 	select {
 	case <-processContext.Done():

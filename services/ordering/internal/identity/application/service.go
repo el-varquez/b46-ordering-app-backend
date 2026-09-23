@@ -170,7 +170,7 @@ func (service *Service) beginOAuth(
 	purpose domain.OAuthPurpose,
 	boundUserID string,
 ) (OAuthStart, error) {
-	if !provider.OAuth() {
+	if provider != domain.ProviderGoogle {
 		return OAuthStart{}, domain.ErrInvalidInput
 	}
 	nonce, err := service.tokens.New()
@@ -190,7 +190,7 @@ func (service *Service) beginOAuth(
 
 func (service *Service) OAuthLogin(ctx context.Context, intentID, providerToken string) (domain.SessionTokens, error) {
 	intent, err := service.store.FindOAuthIntent(ctx, intentID, service.clock.Now())
-	if err != nil || intent.Purpose != domain.OAuthLogin {
+	if err != nil || intent.Purpose != domain.OAuthLogin || intent.Provider != domain.ProviderGoogle {
 		return domain.SessionTokens{}, domain.ErrInvalidOAuthIntent
 	}
 	verified, err := service.oauth.Verify(ctx, intent.Provider, providerToken, intent.NonceHash)
@@ -219,7 +219,7 @@ func (service *Service) LinkOAuth(
 	intentID, providerToken string,
 ) error {
 	intent, err := service.store.FindOAuthIntent(ctx, intentID, service.clock.Now())
-	if err != nil || intent.Purpose != domain.OAuthLink || intent.BoundUserID != principal.UserID {
+	if err != nil || intent.Purpose != domain.OAuthLink || intent.Provider != domain.ProviderGoogle || intent.BoundUserID != principal.UserID {
 		return domain.ErrInvalidOAuthIntent
 	}
 	verified, err := service.oauth.Verify(ctx, intent.Provider, providerToken, intent.NonceHash)

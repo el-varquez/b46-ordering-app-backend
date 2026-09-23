@@ -56,6 +56,13 @@ type Config struct {
 	ArgonParallelism              uint8
 	GoogleClientIDs               []string
 	AppleClientIDs                []string
+	RegistrationCodeKey           string
+	SMTPHost                      string
+	SMTPPort                      int
+	SMTPFrom                      string
+	SMTPUsername                  string
+	SMTPPassword                  string
+	SMTPAllowInsecureLocal        bool
 	OutboxPollInterval            time.Duration
 	OutboxBatchSize               int
 	OutboxLeaseTimeout            time.Duration
@@ -155,8 +162,32 @@ func Load() (Config, error) {
 
 	googleClientIDs := commaSeparated("GOOGLE_CLIENT_IDS")
 	appleClientIDs := commaSeparated("APPLE_CLIENT_IDS")
-	if environment == "production" && (len(googleClientIDs) == 0 || len(appleClientIDs) == 0) {
-		return Config{}, errors.New("GOOGLE_CLIENT_IDS and APPLE_CLIENT_IDS are required in production")
+	if environment == "production" && len(googleClientIDs) == 0 {
+		return Config{}, errors.New("GOOGLE_CLIENT_IDS is required in production")
+	}
+	registrationCodeKey := os.Getenv("REGISTRATION_CODE_KEY")
+	smtpHost := strings.TrimSpace(os.Getenv("SMTP_HOST"))
+	smtpPort, err := integer("SMTP_PORT", 587)
+	if err != nil || smtpPort < 1 || smtpPort > 65535 {
+		return Config{}, errors.New("SMTP_PORT must be from 1 to 65535")
+	}
+	smtpFrom := strings.TrimSpace(os.Getenv("SMTP_FROM"))
+	smtpUsername := strings.TrimSpace(os.Getenv("SMTP_USERNAME"))
+	smtpPassword := os.Getenv("SMTP_PASSWORD")
+	allowInsecureSMTP, err := strconv.ParseBool(envOrDefault("SMTP_ALLOW_INSECURE_LOCAL", "false"))
+	if err != nil {
+		return Config{}, errors.New("SMTP_ALLOW_INSECURE_LOCAL must be true or false")
+	}
+	if allowInsecureSMTP && environment == "production" {
+		return Config{}, errors.New("insecure SMTP is forbidden in production")
+	}
+	if environment == "production" {
+		if len([]byte(registrationCodeKey)) < 32 {
+			return Config{}, errors.New("REGISTRATION_CODE_KEY must contain at least 32 bytes in production")
+		}
+		if smtpHost == "" || smtpFrom == "" || smtpUsername == "" || smtpPassword == "" {
+			return Config{}, errors.New("SMTP_HOST, SMTP_FROM, SMTP_USERNAME, and SMTP_PASSWORD are required in production")
+		}
 	}
 
 	outboxPollInterval, err := boundedDuration(
@@ -251,6 +282,13 @@ func Load() (Config, error) {
 		ArgonParallelism:              uint8(argonParallelism),
 		GoogleClientIDs:               googleClientIDs,
 		AppleClientIDs:                appleClientIDs,
+		RegistrationCodeKey:           registrationCodeKey,
+		SMTPHost:                      smtpHost,
+		SMTPPort:                      int(smtpPort),
+		SMTPFrom:                      smtpFrom,
+		SMTPUsername:                  smtpUsername,
+		SMTPPassword:                  smtpPassword,
+		SMTPAllowInsecureLocal:        allowInsecureSMTP,
 		OutboxPollInterval:            outboxPollInterval,
 		OutboxBatchSize:               int(outboxBatchSize),
 		OutboxLeaseTimeout:            outboxLeaseTimeout,
