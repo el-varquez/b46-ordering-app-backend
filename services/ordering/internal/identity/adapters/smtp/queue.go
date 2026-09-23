@@ -22,6 +22,7 @@ type Queue struct {
 	ctx    context.Context
 	sender ports.VerificationMailer
 	jobs   chan delivery
+	done   chan struct{}
 }
 
 var _ ports.VerificationMailer = (*Queue)(nil)
@@ -30,7 +31,7 @@ func NewQueue(ctx context.Context, sender ports.VerificationMailer, capacity int
 	if ctx == nil || sender == nil || !sender.Configured() || capacity < 1 {
 		return nil, errors.New("invalid registration mail queue configuration")
 	}
-	queue := &Queue{ctx: ctx, sender: sender, jobs: make(chan delivery, capacity)}
+	queue := &Queue{ctx: ctx, sender: sender, jobs: make(chan delivery, capacity), done: make(chan struct{})}
 	go queue.run()
 	return queue, nil
 }
@@ -51,15 +52,22 @@ func (queue *Queue) SendCode(ctx context.Context, email, code string) error {
 }
 
 func (queue *Queue) run() {
+	defer close(queue.done)
 	for {
+		if queue.ctx.Err() != nil {
+			return
+		}
 		select {
 		case <-queue.ctx.Done():
 			return
 		case message := <-queue.jobs:
+			if queue.ctx.Err() != nil {
+				return
+			}
 			deliveryContext, cancel := context.WithTimeout(queue.ctx, 12*time.Second)
 			err := queue.sender.SendCode(deliveryContext, message.email, message.code)
 			cancel()
-			if err != nil {
+			if err != nil && queue.ctx.Err() == nil {
 				slog.Error("registration email delivery failed", "operation", "queued_send", "error_type", fmt.Sprintf("%T", err))
 			}
 		}

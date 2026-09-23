@@ -2,18 +2,22 @@ package smtp
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 type blockingSender struct {
 	started chan struct{}
+	calls   atomic.Int32
 }
 
 func (*blockingSender) Configured() bool { return true }
 
 func (sender *blockingSender) SendCode(ctx context.Context, _, _ string) error {
-	close(sender.started)
+	if sender.calls.Add(1) == 1 {
+		close(sender.started)
+	}
 	<-ctx.Done()
 	return ctx.Err()
 }
@@ -43,5 +47,28 @@ func TestQueueAcknowledgesWithoutWaitingForSMTPAndBoundsWork(t *testing.T) {
 	}
 	if err := queue.SendCode(ctx, "third@example.test", "345678"); err == nil {
 		t.Fatal("full queue accepted another message")
+	}
+}
+
+func TestQueueDoesNotDispatchPendingMailAfterShutdown(t *testing.T) {
+	for attempt := 0; attempt < 32; attempt++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		sender := &blockingSender{started: make(chan struct{})}
+		queue, err := NewQueue(ctx, sender, 1)
+		if err != nil {
+			t.Fatalf("create queue: %v", err)
+		}
+		if err := queue.SendCode(ctx, "first@example.test", "123456"); err != nil {
+			t.Fatalf("enqueue first message: %v", err)
+		}
+		<-sender.started
+		if err := queue.SendCode(ctx, "pending@example.test", "234567"); err != nil {
+			t.Fatalf("enqueue pending message: %v", err)
+		}
+		cancel()
+		<-queue.done
+		if calls := sender.calls.Load(); calls != 1 {
+			t.Fatalf("worker dispatched %d messages after shutdown; want only the active message", calls)
+		}
 	}
 }
