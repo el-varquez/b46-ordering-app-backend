@@ -65,12 +65,15 @@ for (const [schemaPath, examplePath] of pairs) {
 try {
   const openapi = readJSON('contracts/http/openapi.json');
   if (openapi.openapi !== '3.1.1') failures.push('contracts/http/openapi.json: expected OpenAPI 3.1.1');
-  if (openapi.info?.version !== '0.4.0') failures.push('contracts/http/openapi.json: expected Phase 5 version 0.4.0');
+  if (openapi.info?.version !== '0.5.0') failures.push('contracts/http/openapi.json: expected Phase 5 registration version 0.5.0');
   for (const route of ['/v1/health/live', '/v1/health/ready']) {
     if (!openapi.paths?.[route]?.get) failures.push(`contracts/http/openapi.json: missing GET ${route}`);
   }
   const identityOperations = [
     ['post', '/v1/auth/password/login'],
+    ['post', '/v1/auth/password/registrations'],
+    ['post', '/v1/auth/password/registrations/resend'],
+    ['post', '/v1/auth/password/registrations/verify'],
     ['post', '/v1/auth/oauth/intents'],
     ['post', '/v1/auth/oauth/login'],
     ['post', '/v1/auth/refresh'],
@@ -122,7 +125,7 @@ try {
   const expectedVocabulary = {
     Role: ['CUSTOMER', 'CASHIER', 'ADMIN'],
     Provider: ['PASSWORD', 'GOOGLE', 'APPLE'],
-    OAuthProvider: ['GOOGLE', 'APPLE'],
+    OAuthProvider: ['GOOGLE'],
     AccountStatus: ['ACTIVE', 'DISABLED'],
     OrderStatus: ['SUBMITTED', 'CONFIRMED', 'REJECTED'],
     FulfillmentStatus: ['PREPARING', 'DELIVERING', 'DELIVERED'],
@@ -140,6 +143,9 @@ try {
   const errorCodes = openapi.components?.schemas?.Error?.properties?.code?.enum ?? [];
   for (const code of [
     'INVALID_CREDENTIALS',
+    'INVALID_REGISTRATION',
+    'REGISTRATION_RATE_LIMITED',
+    'EMAIL_UNAVAILABLE',
     'INVALID_OAUTH_CREDENTIAL',
     'INVALID_OAUTH_INTENT',
     'IDENTITY_LINK_REQUIRED',

@@ -2,8 +2,8 @@
   "openapi": "3.1.1",
   "info": {
     "title": "B46 Ordering API",
-    "version": "0.4.0",
-    "description": "Phase 5 mobile contract for identity, catalog, and the Customer/Cashier order lifecycle."
+    "version": "0.5.0",
+    "description": "Phase 5 mobile contract with verified Customer email registration, identity, catalog, and the Customer/Cashier order lifecycle."
   },
   "servers": [{ "url": "http://localhost:8080" }],
   "paths": {
@@ -42,6 +42,41 @@
           "400": { "$ref": "#/components/responses/ErrorResponse" },
           "401": { "$ref": "#/components/responses/ErrorResponse" },
           "403": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/auth/password/registrations": {
+      "post": {
+        "operationId": "beginCustomerRegistration",
+        "description": "Generic acknowledgement does not disclose whether the email already belongs to an account. Only a verified new address can become a Customer.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegistrationStartRequest" } } } },
+        "responses": {
+          "202": { "$ref": "#/components/responses/RegistrationStartResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "429": { "$ref": "#/components/responses/ErrorResponse" },
+          "503": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/auth/password/registrations/resend": {
+      "post": {
+        "operationId": "resendRegistrationCode",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegistrationIDRequest" } } } },
+        "responses": {
+          "202": { "$ref": "#/components/responses/RegistrationStartResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "429": { "$ref": "#/components/responses/ErrorResponse" },
+          "503": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/auth/password/registrations/verify": {
+      "post": {
+        "operationId": "verifyCustomerRegistration",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegistrationVerifyRequest" } } } },
+        "responses": {
+          "200": { "$ref": "#/components/responses/SessionResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
     },
@@ -304,6 +339,10 @@
         "description": "A new B46 mobile session token pair.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionResponse" } } }
       },
+      "RegistrationStartResponse": {
+        "description": "A generic acknowledgement with an opaque registration attempt ID.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegistrationStartEnvelope" } } }
+      },
       "OAuthIntentResponse": {
         "description": "A one-time OAuth intent and provider nonce.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthIntentResponse" } } }
@@ -345,7 +384,7 @@
     "schemas": {
       "Role": { "type": "string", "enum": ["CUSTOMER", "CASHIER", "ADMIN"] },
       "Provider": { "type": "string", "enum": ["PASSWORD", "GOOGLE", "APPLE"] },
-      "OAuthProvider": { "type": "string", "enum": ["GOOGLE", "APPLE"] },
+      "OAuthProvider": { "type": "string", "enum": ["GOOGLE"] },
       "AccountStatus": { "type": "string", "enum": ["ACTIVE", "DISABLED"] },
       "OrderStatus": { "type": "string", "enum": ["SUBMITTED", "CONFIRMED", "REJECTED"] },
       "FulfillmentStatus": { "type": "string", "enum": ["PREPARING", "DELIVERING", "DELIVERED"] },
@@ -379,7 +418,50 @@
         "required": ["email", "password"],
         "properties": {
           "email": { "type": "string", "format": "email", "maxLength": 254 },
-          "password": { "type": "string", "minLength": 12, "maxLength": 128, "writeOnly": true }
+          "password": { "type": "string", "minLength": 8, "maxLength": 128, "writeOnly": true }
+        }
+      },
+      "RegistrationStartRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "email", "password"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "email": { "type": "string", "format": "email", "maxLength": 254 },
+          "password": { "type": "string", "minLength": 8, "maxLength": 128, "writeOnly": true }
+        }
+      },
+      "RegistrationIDRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["registration_id"],
+        "properties": { "registration_id": { "type": "string", "minLength": 32, "maxLength": 128 } }
+      },
+      "RegistrationVerifyRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["registration_id", "code"],
+        "properties": {
+          "registration_id": { "type": "string", "minLength": 32, "maxLength": 128 },
+          "code": { "type": "string", "pattern": "^[0-9]{6}$", "writeOnly": true }
+        }
+      },
+      "RegistrationStartData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["registration_id", "expires_at"],
+        "properties": {
+          "registration_id": { "type": "string", "minLength": 32, "maxLength": 128 },
+          "expires_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RegistrationStartEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/RegistrationStartData" },
+          "meta": { "$ref": "#/components/schemas/ResponseMeta" }
         }
       },
       "OAuthIntentRequest": {
@@ -685,6 +767,7 @@
             "type": "string",
             "enum": [
               "INVALID_REQUEST", "INVALID_CREDENTIALS", "INVALID_OAUTH_CREDENTIAL",
+              "INVALID_REGISTRATION", "REGISTRATION_RATE_LIMITED", "EMAIL_UNAVAILABLE",
               "INVALID_OAUTH_INTENT", "IDENTITY_LINK_REQUIRED", "IDENTITY_ALREADY_LINKED",
               "ACCOUNT_DISABLED", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND",
               "CONFLICT", "CART_CHANGED", "ITEMS_UNAVAILABLE", "INVALID_TRANSITION",
