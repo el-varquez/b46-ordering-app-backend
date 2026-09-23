@@ -133,7 +133,7 @@ func NormalizeEmail(value string) (string, error) {
 
 func ValidatePassword(value string) error {
 	length := utf8.RuneCountInString(value)
-	if length < 12 || length > 128 {
+	if length < 8 || length > 128 {
 		return ErrInvalidInput
 	}
 	return nil
