@@ -2,8 +2,8 @@
   "openapi": "3.1.1",
   "info": {
     "title": "B46 Ordering API",
-    "version": "0.5.0",
-    "description": "Phase 5 mobile contract with verified Customer email registration, identity, catalog, and the Customer/Cashier order lifecycle."
+    "version": "0.7.0",
+    "description": "B46 mobile contract with shared identity, catalog, ordering, and Admin Cashier management."
   },
   "servers": [{ "url": "http://localhost:8080" }],
   "paths": {
@@ -138,6 +138,120 @@
         "responses": {
           "200": { "$ref": "#/components/responses/CurrentUserResponse" },
           "401": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/me/password": {
+      "post": {
+        "operationId": "changeOwnPassword",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChangePasswordRequest" } } } },
+        "responses": {
+          "200": { "$ref": "#/components/responses/CurrentUserResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/admin/cashiers": {
+      "get": {
+        "operationId": "listAdminCashiers",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "status", "in": "query", "required": false, "schema": { "$ref": "#/components/schemas/AccountStatus" } }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/AdminCashierListResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/admin/cashiers/registrations": {
+      "post": {
+        "operationId": "beginCashierRegistration",
+        "security": [{ "bearerAuth": [] }],
+        "description": "Admin starts a cashier email challenge. No usable account is created until verification.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegistrationStartRequest" } } } },
+        "responses": {
+          "202": { "$ref": "#/components/responses/RegistrationStartResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "409": { "$ref": "#/components/responses/ErrorResponse" },
+          "429": { "$ref": "#/components/responses/ErrorResponse" },
+          "503": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/admin/cashiers/registrations/resend": {
+      "post": {
+        "operationId": "resendCashierRegistrationCode",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegistrationIDRequest" } } } },
+        "responses": {
+          "202": { "$ref": "#/components/responses/RegistrationStartResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "429": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/admin/cashiers/registrations/verify": {
+      "post": {
+        "operationId": "verifyCashierRegistration",
+        "security": [{ "bearerAuth": [] }],
+        "description": "Admin submits the code obtained from the cashier. A verified Cashier is created or a legacy unverified Cashier is unlocked.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegistrationVerifyRequest" } } } },
+        "responses": {
+          "200": { "$ref": "#/components/responses/AdminCashierResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "409": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/admin/cashiers/{cashier_id}": {
+      "get": {
+        "operationId": "getAdminCashier",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/CashierID" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/AdminCashierResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "404": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/admin/cashiers/{cashier_id}/status": {
+      "put": {
+        "operationId": "setAdminCashierStatus",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/CashierID" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CashierStatusRequest" } } } },
+        "responses": {
+          "200": { "$ref": "#/components/responses/AdminCashierResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "404": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/v1/admin/cashiers/{cashier_id}/password-reset": {
+      "post": {
+        "operationId": "resetAdminCashierPassword",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/CashierID" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResetCashierPasswordRequest" } } } },
+        "responses": {
+          "200": { "$ref": "#/components/responses/AdminCashierResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "404": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
     },
@@ -321,6 +435,10 @@
         "required": true,
         "schema": { "type": "string", "format": "uuid" }
       },
+      "CashierID": {
+        "name": "cashier_id", "in": "path", "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
       "Limit": {
         "name": "limit",
         "in": "query",
@@ -350,6 +468,14 @@
       "CurrentUserResponse": {
         "description": "The canonical authenticated user.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CurrentUserResponse" } } }
+      },
+      "AdminCashierResponse": {
+        "description": "An Admin-visible Cashier account with providers and recent audit events.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminCashierEnvelope" } } }
+      },
+      "AdminCashierListResponse": {
+        "description": "Cashier accounts visible only to an Admin.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminCashierListEnvelope" } } }
       },
       "StatusResponse": {
         "description": "The operation completed.",
@@ -421,6 +547,24 @@
           "password": { "type": "string", "minLength": 8, "maxLength": 128, "writeOnly": true }
         }
       },
+      "ChangePasswordRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["current_password", "new_password"],
+        "properties": {
+          "current_password": { "type": "string", "writeOnly": true },
+          "new_password": { "type": "string", "minLength": 8, "maxLength": 128, "writeOnly": true }
+        }
+      },
+      "CashierStatusRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["status"],
+        "properties": { "status": { "$ref": "#/components/schemas/AccountStatus" } }
+      },
+      "ResetCashierPasswordRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["temporary_password"],
+        "properties": { "temporary_password": { "type": "string", "minLength": 8, "maxLength": 128, "writeOnly": true } }
+      },
       "RegistrationStartRequest": {
         "type": "object",
         "additionalProperties": false,
@@ -488,13 +632,14 @@
       "User": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["user_id", "name", "email", "role", "status"],
+        "required": ["user_id", "name", "email", "role", "status", "password_change_required"],
         "properties": {
           "user_id": { "type": "string", "format": "uuid" },
           "name": { "type": "string", "minLength": 1, "maxLength": 120 },
           "email": { "type": "string", "format": "email", "maxLength": 254 },
           "role": { "$ref": "#/components/schemas/Role" },
-          "status": { "$ref": "#/components/schemas/AccountStatus" }
+          "status": { "$ref": "#/components/schemas/AccountStatus" },
+          "password_change_required": { "type": "boolean" }
         }
       },
       "SessionData": {
@@ -541,13 +686,14 @@
       "CurrentUserData": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["user_id", "name", "email", "role", "status", "connected_providers"],
+        "required": ["user_id", "name", "email", "role", "status", "password_change_required", "connected_providers"],
         "properties": {
           "user_id": { "type": "string", "format": "uuid" },
           "name": { "type": "string", "minLength": 1, "maxLength": 120 },
           "email": { "type": "string", "format": "email", "maxLength": 254 },
           "role": { "$ref": "#/components/schemas/Role" },
           "status": { "$ref": "#/components/schemas/AccountStatus" },
+          "password_change_required": { "type": "boolean" },
           "connected_providers": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/Provider" },
@@ -561,6 +707,52 @@
         "required": ["data", "meta"],
         "properties": {
           "data": { "$ref": "#/components/schemas/CurrentUserData" },
+          "meta": { "$ref": "#/components/schemas/ResponseMeta" }
+        }
+      },
+      "AdminCashierAuditEntry": {
+        "type": "object", "additionalProperties": false,
+        "required": ["action", "actor_user_id", "result", "occurred_at"],
+        "properties": {
+          "action": { "type": "string" },
+          "actor_user_id": { "type": "string" },
+          "result": { "type": "string" },
+          "occurred_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AdminCashier": {
+        "type": "object", "additionalProperties": false,
+        "required": ["user_id", "name", "email", "role", "status", "password_change_required", "email_verified", "connected_providers", "audit", "created"],
+        "properties": {
+          "user_id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "email": { "type": "string", "format": "email" },
+          "role": { "type": "string", "const": "CASHIER" },
+          "status": { "$ref": "#/components/schemas/AccountStatus" },
+          "password_change_required": { "type": "boolean" },
+          "email_verified": { "type": "boolean", "description": "Unverified Cashiers cannot sign in or use existing sessions." },
+          "created": { "type": "boolean", "description": "True if verification created a new Cashier; false if it unlocked a legacy unverified Cashier." },
+          "connected_providers": { "type": "array", "items": { "$ref": "#/components/schemas/Provider" } },
+          "audit": { "type": "array", "items": { "$ref": "#/components/schemas/AdminCashierAuditEntry" } }
+        }
+      },
+      "AdminCashierEnvelope": {
+        "type": "object", "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/AdminCashier" },
+          "meta": { "$ref": "#/components/schemas/ResponseMeta" }
+        }
+      },
+      "AdminCashierListEnvelope": {
+        "type": "object", "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "object", "additionalProperties": false,
+            "required": ["cashiers"],
+            "properties": { "cashiers": { "type": "array", "items": { "$ref": "#/components/schemas/AdminCashier" } } }
+          },
           "meta": { "$ref": "#/components/schemas/ResponseMeta" }
         }
       },

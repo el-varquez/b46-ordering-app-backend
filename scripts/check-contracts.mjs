@@ -65,7 +65,11 @@ for (const [schemaPath, examplePath] of pairs) {
 try {
   const openapi = readJSON('contracts/http/openapi.json');
   if (openapi.openapi !== '3.1.1') failures.push('contracts/http/openapi.json: expected OpenAPI 3.1.1');
-  if (openapi.info?.version !== '0.5.0') failures.push('contracts/http/openapi.json: expected Phase 5 registration version 0.5.0');
+  const version = openapi.info?.version;
+  const match = typeof version === 'string' ? /^(\d+)\.(\d+)\.(\d+)$/.exec(version) : null;
+  if (!match || (Number(match[1]) === 0 && Number(match[2]) < 5)) {
+    failures.push('contracts/http/openapi.json: expected a 0.5.0-or-newer API contract');
+  }
   for (const route of ['/v1/health/live', '/v1/health/ready']) {
     if (!openapi.paths?.[route]?.get) failures.push(`contracts/http/openapi.json: missing GET ${route}`);
   }
@@ -85,6 +89,28 @@ try {
   for (const [method, route] of identityOperations) {
     if (!openapi.paths?.[route]?.[method]) {
       failures.push(`contracts/http/openapi.json: missing ${method.toUpperCase()} ${route}`);
+    }
+  }
+  if (match && Number(match[2]) >= 7) {
+    for (const [method, route] of [
+      ['get', '/v1/admin/cashiers'],
+      ['post', '/v1/admin/cashiers/registrations'],
+      ['post', '/v1/admin/cashiers/registrations/resend'],
+      ['post', '/v1/admin/cashiers/registrations/verify'],
+      ['get', '/v1/admin/cashiers/{cashier_id}'],
+    ]) {
+      const operation = openapi.paths?.[route]?.[method];
+      if (!operation) {
+        failures.push(`contracts/http/openapi.json: missing ${method.toUpperCase()} ${route}`);
+      } else if (JSON.stringify(operation.security) !== JSON.stringify([{ bearerAuth: [] }])) {
+        failures.push(`contracts/http/openapi.json: ${method.toUpperCase()} ${route} must require bearerAuth`);
+      }
+    }
+    if (openapi.paths?.['/v1/admin/cashiers']?.post) {
+      failures.push('contracts/http/openapi.json: direct Cashier creation must remain unavailable');
+    }
+    if (openapi.components?.schemas?.AdminCashier?.properties?.email_verified?.type !== 'boolean') {
+      failures.push('contracts/http/openapi.json: AdminCashier must expose email_verified');
     }
   }
   const orderingOperations = [
