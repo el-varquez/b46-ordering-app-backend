@@ -200,3 +200,34 @@ func TestLegacyCashierMustVerifyEmailBeforeAnySessionWorks(t *testing.T) {
 		t.Fatalf("verified temporary login = (%+v, %v)", login.User, err)
 	}
 }
+
+func TestDisableCashierRevokesSessionWhenAppClockLagsDatabase(t *testing.T) {
+	pool := integrationPool(t)
+	defer pool.Close()
+	ctx := context.Background()
+	hasher := identitysecurity.NewArgon2id(19*1024, 2, 1)
+	clock := &adjustableClock{now: time.Now().UTC().Add(time.Second)}
+	identity := identityService(t, pool, clock, hasher, staticOAuthVerifier{})
+	admin := seedPasswordUser(t, pool, hasher, domain.RoleAdmin, domain.AccountActive)
+	defer cleanupUser(t, pool, admin.ID)
+	cashier := seedPasswordUser(t, pool, hasher, domain.RoleCashier, domain.AccountActive)
+	defer cleanupUser(t, pool, cashier.ID)
+	if _, err := identity.PasswordLogin(ctx, cashier.NormalizedEmail, integrationPassword); err != nil {
+		t.Fatalf("create cashier session: %v", err)
+	}
+	var createdAt time.Time
+	if err := pool.QueryRow(ctx, `SELECT created_at FROM sessions WHERE user_id = $1`, cashier.ID).Scan(&createdAt); err != nil {
+		t.Fatalf("read session creation time: %v", err)
+	}
+	store := identitypostgres.New(pool)
+	if _, err := store.SetCashierStatus(ctx, admin.ID, cashier.ID, domain.AccountDisabled, createdAt.Add(-time.Second)); err != nil {
+		t.Fatalf("disable cashier with lagging app clock: %v", err)
+	}
+	var revokedAt time.Time
+	if err := pool.QueryRow(ctx, `SELECT revoked_at FROM sessions WHERE user_id = $1`, cashier.ID).Scan(&revokedAt); err != nil {
+		t.Fatalf("read session revocation time: %v", err)
+	}
+	if revokedAt.Before(createdAt) {
+		t.Fatalf("revocation %s precedes session creation %s", revokedAt, createdAt)
+	}
+}

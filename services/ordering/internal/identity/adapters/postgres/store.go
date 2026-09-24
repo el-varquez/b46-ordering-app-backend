@@ -166,8 +166,8 @@ func (store *Store) RotateRefresh(
 	}
 	_, err = tx.Exec(ctx, `
 		UPDATE sessions
-		SET refresh_consumed_at = $2,
-		    revoked_at = $2,
+		SET refresh_consumed_at = GREATEST($2, created_at),
+		    revoked_at = GREATEST($2, created_at),
 		    revoked_reason = 'ROTATED',
 		    replaced_by_session_id = $3
 		WHERE id = $1
@@ -185,7 +185,7 @@ func (store *Store) RevokeFamily(ctx context.Context, familyID, reason string, n
 	_, err := store.pool.Exec(ctx, `
 		WITH revoked AS (
 			UPDATE sessions
-			SET revoked_at = COALESCE(revoked_at, $2),
+			SET revoked_at = COALESCE(revoked_at, GREATEST($2, created_at)),
 			    revoked_reason = COALESCE(revoked_reason, $3)
 			WHERE family_id = $1
 			RETURNING user_id
@@ -232,7 +232,7 @@ func insertSession(ctx context.Context, tx pgx.Tx, value domain.NewSession) (str
 func revokeFamily(ctx context.Context, tx pgx.Tx, familyID, reason string, now time.Time) error {
 	_, err := tx.Exec(ctx, `
 		UPDATE sessions
-		SET revoked_at = COALESCE(revoked_at, $2),
+		SET revoked_at = COALESCE(revoked_at, GREATEST($2, created_at)),
 		    revoked_reason = COALESCE(revoked_reason, $3)
 		WHERE family_id = $1
 	`, familyID, now, reason)
@@ -492,7 +492,7 @@ func (store *Store) DisableUser(ctx context.Context, actorID, userID string, now
 	}
 	_, err = tx.Exec(ctx, `
 		UPDATE sessions
-		SET revoked_at = COALESCE(revoked_at, $2),
+		SET revoked_at = COALESCE(revoked_at, GREATEST($2, created_at)),
 		    revoked_reason = COALESCE(revoked_reason, 'ACCOUNT_DISABLED')
 		WHERE user_id = $1
 	`, userID, now)
@@ -530,7 +530,7 @@ func lockIntent(ctx context.Context, tx pgx.Tx, id string, now time.Time) (domai
 
 func consumeIntent(ctx context.Context, tx pgx.Tx, id string, now time.Time) error {
 	result, err := tx.Exec(ctx, `
-		UPDATE oauth_intents SET consumed_at = $2
+		UPDATE oauth_intents SET consumed_at = GREATEST($2, created_at)
 		WHERE id = $1 AND consumed_at IS NULL
 	`, id, now)
 	if err != nil {

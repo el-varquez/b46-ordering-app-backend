@@ -230,6 +230,11 @@ func TestLogoutIsFamilyScopedAndDisableRevokesEveryFamily(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second PasswordLogin() error = %v", err)
 	}
+	var sessionCreatedAt time.Time
+	if err := pool.QueryRow(context.Background(), `SELECT min(created_at) FROM sessions WHERE user_id = $1`, customer.ID).Scan(&sessionCreatedAt); err != nil {
+		t.Fatalf("read session creation time: %v", err)
+	}
+	clock.Advance(sessionCreatedAt.Add(-time.Second).Sub(clock.Now()))
 	if err := service.Logout(context.Background(), first.AccessToken); err != nil {
 		t.Fatalf("Logout() error = %v", err)
 	}
@@ -388,6 +393,11 @@ func TestConcurrentOAuthLinkHasOneWinnerAndPreservesUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second BeginOAuthLink() error = %v", err)
 	}
+	var intentCreatedAt time.Time
+	if err := pool.QueryRow(context.Background(), `SELECT min(created_at) FROM oauth_intents WHERE id IN ($1, $2)`, firstIntent.IntentID, secondIntent.IntentID).Scan(&intentCreatedAt); err != nil {
+		t.Fatalf("read OAuth intent creation time: %v", err)
+	}
+	clock.Advance(intentCreatedAt.Add(-time.Second).Sub(clock.Now()))
 
 	start := make(chan struct{})
 	errorsFound := make(chan error, 2)

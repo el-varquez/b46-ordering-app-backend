@@ -209,7 +209,7 @@ func (store *Store) ChangeOwnPassword(
 		return fmt.Errorf("clear password change requirement: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
-		UPDATE sessions SET revoked_at = COALESCE(revoked_at, $3),
+		UPDATE sessions SET revoked_at = COALESCE(revoked_at, GREATEST($3, created_at)),
 		       revoked_reason = COALESCE(revoked_reason, 'PASSWORD_CHANGED')
 		WHERE user_id = $1 AND family_id <> $2::uuid AND revoked_at IS NULL
 	`, userID, familyID, now); err != nil {
@@ -223,7 +223,7 @@ func (store *Store) ChangeOwnPassword(
 
 func revokeManagedSessions(ctx context.Context, tx pgx.Tx, id, reason string, now time.Time) error {
 	if _, err := tx.Exec(ctx, `
-		UPDATE sessions SET revoked_at = COALESCE(revoked_at, $2),
+		UPDATE sessions SET revoked_at = GREATEST($2, created_at),
 		       revoked_reason = COALESCE(revoked_reason, $3)
 		WHERE user_id = $1 AND revoked_at IS NULL
 	`, id, now, reason); err != nil {
