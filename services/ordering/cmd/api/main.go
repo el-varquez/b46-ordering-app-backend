@@ -121,6 +121,7 @@ func run() error {
 		return err
 	}
 	registrationRoutes := identitytransport.NewRegistration(registrationService, httpserver.JSONResponder{})
+	adminCashierRegistrationRoutes := identitytransport.NewAdminCashierRegistration(identityRoutes, registrationRoutes)
 	orderingStore := orderingpostgres.New(database.Pool())
 	ids := orderingsystem.IDs{}
 	clock := orderingsystem.Clock{}
@@ -196,7 +197,7 @@ func run() error {
 		MaxRequestBodyBytes: processConfig.MaxRequestBodyBytes,
 		Logger:              logger,
 		Readiness:           database,
-		Routes:              []httpserver.RouteRegistrar{identityRoutes, registrationRoutes, catalogRoutes, orderingRoutes},
+		Routes:              []httpserver.RouteRegistrar{identityRoutes, registrationRoutes, adminCashierRegistrationRoutes, catalogRoutes, orderingRoutes},
 	})
 
 	serverError := make(chan error, 1)

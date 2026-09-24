@@ -106,8 +106,9 @@ func seedPasswordUser(
 	}
 	var user domain.User
 	err = pool.QueryRow(context.Background(), `
-		INSERT INTO users (name, normalized_email, role, account_status)
-		VALUES ($1, lower($2) || '-' || gen_random_uuid() || '@example.test', $3, $4)
+		INSERT INTO users (name, normalized_email, role, account_status, email_verified_at)
+		VALUES ($1, lower($2) || '-' || gen_random_uuid() || '@example.test', $3, $4,
+			CASE WHEN $3 = 'CASHIER' THEN now() ELSE NULL END)
 		RETURNING id, name, normalized_email, role, account_status
 	`, "Integration "+string(role), string(role), role, status).Scan(
 		&user.ID, &user.Name, &user.NormalizedEmail, &user.Role, &user.Status,
@@ -229,6 +230,11 @@ func TestLogoutIsFamilyScopedAndDisableRevokesEveryFamily(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second PasswordLogin() error = %v", err)
 	}
+	var sessionCreatedAt time.Time
+	if err := pool.QueryRow(context.Background(), `SELECT min(created_at) FROM sessions WHERE user_id = $1`, customer.ID).Scan(&sessionCreatedAt); err != nil {
+		t.Fatalf("read session creation time: %v", err)
+	}
+	clock.Advance(sessionCreatedAt.Add(-time.Second).Sub(clock.Now()))
 	if err := service.Logout(context.Background(), first.AccessToken); err != nil {
 		t.Fatalf("Logout() error = %v", err)
 	}
@@ -387,6 +393,11 @@ func TestConcurrentOAuthLinkHasOneWinnerAndPreservesUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second BeginOAuthLink() error = %v", err)
 	}
+	var intentCreatedAt time.Time
+	if err := pool.QueryRow(context.Background(), `SELECT min(created_at) FROM oauth_intents WHERE id IN ($1, $2)`, firstIntent.IntentID, secondIntent.IntentID).Scan(&intentCreatedAt); err != nil {
+		t.Fatalf("read OAuth intent creation time: %v", err)
+	}
+	clock.Advance(intentCreatedAt.Add(-time.Second).Sub(clock.Now()))
 
 	start := make(chan struct{})
 	errorsFound := make(chan error, 2)

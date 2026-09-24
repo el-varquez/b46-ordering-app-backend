@@ -34,6 +34,11 @@ func (handler *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/me", handler.authenticated(handler.me))
 	mux.HandleFunc("POST /v1/me/oauth-link-intents", handler.authenticated(handler.oauthLinkIntent))
 	mux.HandleFunc("POST /v1/me/oauth-identities", handler.authenticated(handler.oauthLink))
+	mux.HandleFunc("POST /v1/me/password", handler.authenticated(handler.changePassword))
+	mux.HandleFunc("GET /v1/admin/cashiers", handler.RequireRole(domain.RoleAdmin, handler.listCashiers))
+	mux.HandleFunc("GET /v1/admin/cashiers/{cashier_id}", handler.RequireRole(domain.RoleAdmin, handler.cashier))
+	mux.HandleFunc("PUT /v1/admin/cashiers/{cashier_id}/status", handler.RequireRole(domain.RoleAdmin, handler.setCashierStatus))
+	mux.HandleFunc("POST /v1/admin/cashiers/{cashier_id}/password-reset", handler.RequireRole(domain.RoleAdmin, handler.resetCashierPassword))
 }
 
 type passwordLoginRequest struct {
@@ -209,6 +214,12 @@ func (handler *Handler) fail(writer http.ResponseWriter, request *http.Request, 
 		handler.responses.Error(writer, request, http.StatusConflict, "IDENTITY_ALREADY_LINKED", "This provider identity is already connected.")
 	case errors.Is(err, domain.ErrAccountDisabled):
 		handler.responses.Error(writer, request, http.StatusForbidden, "ACCOUNT_DISABLED", "This account is disabled.")
+	case errors.Is(err, domain.ErrPasswordChangeRequired):
+		handler.responses.Error(writer, request, http.StatusForbidden, "PASSWORD_CHANGE_REQUIRED", "Set a new password before continuing.")
+	case errors.Is(err, domain.ErrCashierNotFound):
+		handler.responses.Error(writer, request, http.StatusNotFound, "CASHIER_NOT_FOUND", "Cashier account not found.")
+	case errors.Is(err, domain.ErrEmailInUse):
+		handler.responses.Error(writer, request, http.StatusConflict, "EMAIL_IN_USE", "This email already belongs to another account.")
 	case errors.Is(err, domain.ErrUnauthenticated):
 		handler.responses.Error(writer, request, http.StatusUnauthorized, "UNAUTHENTICATED", "Authentication is required.")
 	case errors.Is(err, domain.ErrForbidden):
@@ -256,10 +267,11 @@ func userViewResponse(value domain.UserView) map[string]any {
 
 func userResponse(value domain.User) map[string]any {
 	return map[string]any{
-		"user_id": value.ID,
-		"name":    value.Name,
-		"email":   value.NormalizedEmail,
-		"role":    value.Role,
-		"status":  value.Status,
+		"user_id":                  value.ID,
+		"name":                     value.Name,
+		"email":                    value.NormalizedEmail,
+		"role":                     value.Role,
+		"status":                   value.Status,
+		"password_change_required": value.PasswordChangeRequired,
 	}
 }

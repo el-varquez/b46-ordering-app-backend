@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const RequiredMigrationVersion int64 = 5
+const RequiredMigrationVersion int64 = 8
 
 // Database owns the PostgreSQL connection pool used by the process.
 type Database struct {

@@ -22,7 +22,13 @@ type Store interface {
 
 	UserView(context.Context, string) (domain.UserView, error)
 	BootstrapAdmin(context.Context, string, string, string, time.Time) (domain.User, error)
+	RecoverAdminPassword(context.Context, string, string, time.Time) (domain.User, error)
 	DisableUser(context.Context, string, string, time.Time) error
+	ListCashiers(context.Context, domain.AccountStatus) ([]domain.UserView, error)
+	CashierView(context.Context, string) (domain.UserView, error)
+	SetCashierStatus(context.Context, string, string, domain.AccountStatus, time.Time) (domain.UserView, error)
+	ResetCashierPassword(context.Context, string, string, string, time.Time) (domain.UserView, error)
+	ChangeOwnPassword(context.Context, string, string, string, string, time.Time) error
 }
 
 type PasswordHasher interface {

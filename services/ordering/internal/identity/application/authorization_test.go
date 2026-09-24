@@ -33,3 +33,13 @@ func TestAuthorizeRejectsDisabledPrincipal(t *testing.T) {
 		t.Fatalf("Authorize() error = %v, want ErrUnauthenticated", err)
 	}
 }
+
+func TestAuthorizeRequiresTemporaryPasswordReplacement(t *testing.T) {
+	err := Authorize(domain.Principal{
+		Role: domain.RoleCashier, Status: domain.AccountActive,
+		PasswordChangeRequired: true,
+	}, domain.RoleCashier)
+	if !errors.Is(err, domain.ErrPasswordChangeRequired) {
+		t.Fatalf("Authorize() error = %v, want ErrPasswordChangeRequired", err)
+	}
+}

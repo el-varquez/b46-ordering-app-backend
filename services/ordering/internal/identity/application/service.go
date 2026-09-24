@@ -161,6 +161,9 @@ func (service *Service) BeginOAuthLogin(ctx context.Context, provider domain.Pro
 }
 
 func (service *Service) BeginOAuthLink(ctx context.Context, principal domain.Principal, provider domain.Provider) (OAuthStart, error) {
+	if principal.PasswordChangeRequired {
+		return OAuthStart{}, domain.ErrPasswordChangeRequired
+	}
 	return service.beginOAuth(ctx, provider, domain.OAuthLink, principal.UserID)
 }
 
@@ -218,6 +221,9 @@ func (service *Service) LinkOAuth(
 	principal domain.Principal,
 	intentID, providerToken string,
 ) error {
+	if principal.PasswordChangeRequired {
+		return domain.ErrPasswordChangeRequired
+	}
 	intent, err := service.store.FindOAuthIntent(ctx, intentID, service.clock.Now())
 	if err != nil || intent.Purpose != domain.OAuthLink || intent.Provider != domain.ProviderGoogle || intent.BoundUserID != principal.UserID {
 		return domain.ErrInvalidOAuthIntent
@@ -251,6 +257,19 @@ func (service *Service) BootstrapAdmin(ctx context.Context, name, email, passwor
 	)
 }
 
+// RecoverAdminPassword is for the operator-only CLI, never an HTTP route.
+func (service *Service) RecoverAdminPassword(ctx context.Context, email, password string) (domain.User, error) {
+	normalized, err := domain.NormalizeEmail(email)
+	if err != nil || domain.ValidatePassword(password) != nil {
+		return domain.User{}, domain.ErrInvalidInput
+	}
+	hash, err := service.hasher.Hash(password)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("hash admin recovery password: %w", err)
+	}
+	return service.store.RecoverAdminPassword(ctx, normalized, hash, service.clock.Now())
+}
+
 func (service *Service) DisableUser(ctx context.Context, actor domain.Principal, userID string) error {
 	if actor.Role != domain.RoleAdmin {
 		return domain.ErrForbidden
@@ -261,6 +280,9 @@ func (service *Service) DisableUser(ctx context.Context, actor domain.Principal,
 func Authorize(principal domain.Principal, required domain.Role) error {
 	if principal.Status != domain.AccountActive {
 		return domain.ErrUnauthenticated
+	}
+	if principal.PasswordChangeRequired {
+		return domain.ErrPasswordChangeRequired
 	}
 	if principal.Role != required {
 		return domain.ErrForbidden

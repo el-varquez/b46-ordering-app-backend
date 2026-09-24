@@ -57,6 +57,9 @@ adapter-run: ## Start the inventory adapter; set STORE_DATABASE_URL and service 
 bootstrap-admin: ## Create the initial Admin from B46_BOOTSTRAP_ADMIN_* environment variables.
 	go -C services/ordering run ./cmd/bootstrap-admin
 
+recover-admin: ## Operator-only password recovery for the existing Admin; revokes sessions.
+	go -C services/ordering run ./cmd/recover-admin
+
 run: ## Start the Ordering API with the current environment.
 	go -C services/ordering run ./cmd/api
 

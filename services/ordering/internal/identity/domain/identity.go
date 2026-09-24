@@ -46,32 +46,38 @@ const (
 )
 
 var (
-	ErrInvalidInput         = errors.New("invalid identity input")
-	ErrInvalidCredentials   = errors.New("invalid credentials")
-	ErrUnauthenticated      = errors.New("unauthenticated")
-	ErrForbidden            = errors.New("forbidden")
-	ErrAccountDisabled      = errors.New("account disabled")
-	ErrRefreshReuse         = errors.New("refresh token reuse detected")
-	ErrInvalidOAuthIntent   = errors.New("invalid oauth intent")
-	ErrInvalidOAuthToken    = errors.New("invalid oauth credential")
-	ErrIdentityLinkRequired = errors.New("identity link required")
-	ErrIdentityLinked       = errors.New("identity already linked")
-	ErrAdminAlreadyExists   = errors.New("admin already exists")
+	ErrInvalidInput           = errors.New("invalid identity input")
+	ErrInvalidCredentials     = errors.New("invalid credentials")
+	ErrUnauthenticated        = errors.New("unauthenticated")
+	ErrForbidden              = errors.New("forbidden")
+	ErrAccountDisabled        = errors.New("account disabled")
+	ErrRefreshReuse           = errors.New("refresh token reuse detected")
+	ErrInvalidOAuthIntent     = errors.New("invalid oauth intent")
+	ErrInvalidOAuthToken      = errors.New("invalid oauth credential")
+	ErrIdentityLinkRequired   = errors.New("identity link required")
+	ErrIdentityLinked         = errors.New("identity already linked")
+	ErrAdminAlreadyExists     = errors.New("admin already exists")
+	ErrAdminNotFound          = errors.New("admin not found")
+	ErrCashierNotFound        = errors.New("cashier not found")
+	ErrEmailInUse             = errors.New("email already belongs to another account")
+	ErrPasswordChangeRequired = errors.New("password change required")
 )
 
 type User struct {
-	ID              string
-	Name            string
-	NormalizedEmail string
-	Role            Role
-	Status          AccountStatus
+	ID                     string
+	Name                   string
+	NormalizedEmail        string
+	Role                   Role
+	Status                 AccountStatus
+	PasswordChangeRequired bool
 }
 
 type Principal struct {
-	UserID   string
-	Role     Role
-	Status   AccountStatus
-	FamilyID string
+	UserID                 string
+	Role                   Role
+	Status                 AccountStatus
+	FamilyID               string
+	PasswordChangeRequired bool
 }
 
 type PasswordRecord struct {
@@ -115,8 +121,18 @@ type VerifiedIdentity struct {
 }
 
 type UserView struct {
-	User      User
-	Providers []Provider
+	User          User
+	Providers     []Provider
+	Audit         []AuditEntry
+	Created       bool
+	EmailVerified bool
+}
+
+type AuditEntry struct {
+	Action      string
+	ActorUserID string
+	Result      string
+	OccurredAt  time.Time
 }
 
 func NormalizeEmail(value string) (string, error) {

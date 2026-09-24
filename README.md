@@ -1,7 +1,7 @@
 # B46 Ordering Backend
 
 Go modular monolith for B46 Ordering and its isolated inventory adapter.
-Through Phase 5 it provides a POS-backed, quantity-free mobile catalog,
+It provides a POS-backed, quantity-free mobile catalog,
 idempotent checkout, the transactional outbox, Customer order status, the
 Cashier queue, and the Preparing to Delivering to Delivered lifecycle. Password
 and Google identity use opaque mobile sessions with rotating refresh tokens.
@@ -27,7 +27,8 @@ make run
 Make loads `.env` automatically. Direct Go commands still require the variable
 in the current shell: PowerShell uses `$env:DATABASE_URL = "..."`; Bash uses
 `export DATABASE_URL="..."`.
-The API exposes health, identity, catalog, Customer-order, and Cashier-order routes on
+The API exposes health, identity, catalog, Customer-order, Cashier-order, and
+Admin Cashier-management routes on
 port 8080. Protected routes use
 `Authorization: Bearer <access-token>`; refresh tokens are accepted only by the
 refresh operation's JSON body. No browser cookie authentication is used.
@@ -53,6 +54,33 @@ Remove-Item Env:B46_BOOTSTRAP_ADMIN_PASSWORD
 
 The same email is idempotent. A different email is rejected after the first
 Admin exists. The password is Argon2id-hashed and is never printed.
+
+If the Admin loses their password, an operator with access to this backend's
+private environment can recover that **existing** Admin; there is no public
+recovery endpoint and the command cannot create another Admin. Confirm the
+configured `DATABASE_URL` names the intended Ordering database first. Then
+run `make recover-admin` with `B46_RECOVER_ADMIN_EMAIL` and
+`B46_RECOVER_ADMIN_PASSWORD` supplied only in the current shell. The command
+replaces the password, revokes prior sessions, and records an audit event.
+Remove both shell variables immediately afterward. Do not commit the new
+password or pass it as a command-line argument.
+
+## Cashier management
+
+Run `make migrate` on an existing development database before starting the
+Phase 7 API. An authenticated Admin can list Cashiers, add one with a stable
+  temporary password, then send a six-digit email challenge to the Cashier via
+  `/v1/admin/cashiers/registrations`. The Cashier gives that code to the Admin,
+  whose verification creates or unlocks the account. A pending or legacy
+  unverified Cashier cannot sign in; existing unverified accounts require this
+  same flow. The Admin can disable or restore a verified Cashier and reset a
+  Cashier login under `/v1/admin/cashiers`. The Admin must share a temporary
+  password privately; the API never returns it. The Cashier signs in through
+the shared email login, then changes it at `POST /v1/me/password` before
+Cashier order access is authorized. Disable and reset revoke active sessions.
+Repeated status transitions have no duplicate audit effect. Customer or
+Cashier credentials cannot call Admin routes. Admin accounts cannot be
+modified by the Cashier-management routes.
 
 ## OAuth development configuration
 

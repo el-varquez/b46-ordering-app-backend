@@ -23,13 +23,14 @@ func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 func (store *Store) FindPassword(ctx context.Context, email string) (domain.PasswordRecord, error) {
 	var record domain.PasswordRecord
 	err := store.pool.QueryRow(ctx, `
-		SELECT u.id, u.name, u.normalized_email, u.role, u.account_status, i.password_hash
+		SELECT u.id, u.name, u.normalized_email, u.role, u.account_status, u.password_change_required, i.password_hash
 		FROM users u
 		JOIN login_identities i ON i.user_id = u.id
 		WHERE i.provider = 'PASSWORD' AND i.provider_subject = $1
+		  AND (u.role <> 'CASHIER' OR u.email_verified_at IS NOT NULL)
 	`, email).Scan(
 		&record.User.ID, &record.User.Name, &record.User.NormalizedEmail,
-		&record.User.Role, &record.User.Status, &record.PasswordHash,
+		&record.User.Role, &record.User.Status, &record.User.PasswordChangeRequired, &record.PasswordHash,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.PasswordRecord{}, domain.ErrInvalidCredentials
@@ -81,13 +82,14 @@ func (store *Store) CreateSession(ctx context.Context, value domain.NewSession) 
 func (store *Store) AuthenticateAccess(ctx context.Context, hash string, now time.Time) (domain.Principal, error) {
 	var principal domain.Principal
 	err := store.pool.QueryRow(ctx, `
-		SELECT u.id, u.role, u.account_status, s.family_id
+		SELECT u.id, u.role, u.account_status, s.family_id, u.password_change_required
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.access_token_hash = $1
 		  AND s.access_expires_at > $2
 		  AND s.revoked_at IS NULL
-	`, hash, now).Scan(&principal.UserID, &principal.Role, &principal.Status, &principal.FamilyID)
+		  AND (u.role <> 'CASHIER' OR u.email_verified_at IS NOT NULL)
+	`, hash, now).Scan(&principal.UserID, &principal.Role, &principal.Status, &principal.FamilyID, &principal.PasswordChangeRequired)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Principal{}, domain.ErrUnauthenticated
 	}
@@ -120,14 +122,14 @@ func (store *Store) RotateRefresh(
 	err = tx.QueryRow(ctx, `
 		SELECT s.id, s.family_id, s.refresh_expires_at,
 		       s.refresh_consumed_at, s.revoked_at,
-		       u.id, u.name, u.normalized_email, u.role, u.account_status
+		       u.id, u.name, u.normalized_email, u.role, u.account_status, u.password_change_required
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.refresh_token_hash = $1
 		FOR UPDATE OF s, u
 	`, presentedHash).Scan(
 		&sessionID, &familyID, &refreshExpiry, &consumedAt, &revokedAt,
-		&user.ID, &user.Name, &user.NormalizedEmail, &user.Role, &user.Status,
+		&user.ID, &user.Name, &user.NormalizedEmail, &user.Role, &user.Status, &user.PasswordChangeRequired,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.User{}, domain.ErrUnauthenticated
@@ -164,8 +166,8 @@ func (store *Store) RotateRefresh(
 	}
 	_, err = tx.Exec(ctx, `
 		UPDATE sessions
-		SET refresh_consumed_at = $2,
-		    revoked_at = $2,
+		SET refresh_consumed_at = GREATEST($2, created_at),
+		    revoked_at = GREATEST($2, created_at),
 		    revoked_reason = 'ROTATED',
 		    replaced_by_session_id = $3
 		WHERE id = $1
@@ -183,7 +185,7 @@ func (store *Store) RevokeFamily(ctx context.Context, familyID, reason string, n
 	_, err := store.pool.Exec(ctx, `
 		WITH revoked AS (
 			UPDATE sessions
-			SET revoked_at = COALESCE(revoked_at, $2),
+			SET revoked_at = COALESCE(revoked_at, GREATEST($2, created_at)),
 			    revoked_reason = COALESCE(revoked_reason, $3)
 			WHERE family_id = $1
 			RETURNING user_id
@@ -206,17 +208,21 @@ func insertSession(ctx context.Context, tx pgx.Tx, value domain.NewSession) (str
 			user_id, family_id, parent_session_id,
 			access_token_hash, refresh_token_hash,
 			access_expires_at, refresh_expires_at
-		) VALUES (
-			$1,
+		) SELECT
+			u.id,
 			CASE WHEN $2 = '' THEN gen_random_uuid() ELSE $2::uuid END,
 			NULLIF($3, '')::uuid,
 			$4, $5, $6, $7
-		)
+		FROM users u WHERE u.id = $1
+		  AND (u.role <> 'CASHIER' OR u.email_verified_at IS NOT NULL)
 		RETURNING id
 	`, value.UserID, value.FamilyID, value.ParentSessionID,
 		value.AccessTokenHash, value.RefreshTokenHash,
 		value.AccessExpiresAt, value.RefreshExpiresAt,
 	).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", domain.ErrUnauthenticated
+	}
 	if err != nil {
 		return "", fmt.Errorf("insert session: %w", err)
 	}
@@ -226,7 +232,7 @@ func insertSession(ctx context.Context, tx pgx.Tx, value domain.NewSession) (str
 func revokeFamily(ctx context.Context, tx pgx.Tx, familyID, reason string, now time.Time) error {
 	_, err := tx.Exec(ctx, `
 		UPDATE sessions
-		SET revoked_at = COALESCE(revoked_at, $2),
+		SET revoked_at = COALESCE(revoked_at, GREATEST($2, created_at)),
 		    revoked_reason = COALESCE(revoked_reason, $3)
 		WHERE family_id = $1
 	`, familyID, now, reason)
@@ -385,11 +391,11 @@ func (store *Store) CompleteOAuthLink(
 func (store *Store) UserView(ctx context.Context, userID string) (domain.UserView, error) {
 	var view domain.UserView
 	err := store.pool.QueryRow(ctx, `
-		SELECT id, name, normalized_email, role, account_status
+		SELECT id, name, normalized_email, role, account_status, password_change_required
 		FROM users WHERE id = $1
 	`, userID).Scan(
 		&view.User.ID, &view.User.Name, &view.User.NormalizedEmail,
-		&view.User.Role, &view.User.Status,
+		&view.User.Role, &view.User.Status, &view.User.PasswordChangeRequired,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.UserView{}, domain.ErrUnauthenticated
@@ -486,7 +492,7 @@ func (store *Store) DisableUser(ctx context.Context, actorID, userID string, now
 	}
 	_, err = tx.Exec(ctx, `
 		UPDATE sessions
-		SET revoked_at = COALESCE(revoked_at, $2),
+		SET revoked_at = COALESCE(revoked_at, GREATEST($2, created_at)),
 		    revoked_reason = COALESCE(revoked_reason, 'ACCOUNT_DISABLED')
 		WHERE user_id = $1
 	`, userID, now)
@@ -524,7 +530,7 @@ func lockIntent(ctx context.Context, tx pgx.Tx, id string, now time.Time) (domai
 
 func consumeIntent(ctx context.Context, tx pgx.Tx, id string, now time.Time) error {
 	result, err := tx.Exec(ctx, `
-		UPDATE oauth_intents SET consumed_at = $2
+		UPDATE oauth_intents SET consumed_at = GREATEST($2, created_at)
 		WHERE id = $1 AND consumed_at IS NULL
 	`, id, now)
 	if err != nil {
@@ -539,9 +545,9 @@ func consumeIntent(ctx context.Context, tx pgx.Tx, id string, now time.Time) err
 func userByIDForUpdate(ctx context.Context, tx pgx.Tx, id string) (domain.User, error) {
 	var user domain.User
 	err := tx.QueryRow(ctx, `
-		SELECT id, name, normalized_email, role, account_status
+		SELECT id, name, normalized_email, role, account_status, password_change_required
 		FROM users WHERE id = $1 FOR UPDATE
-	`, id).Scan(&user.ID, &user.Name, &user.NormalizedEmail, &user.Role, &user.Status)
+	`, id).Scan(&user.ID, &user.Name, &user.NormalizedEmail, &user.Role, &user.Status, &user.PasswordChangeRequired)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.User{}, domain.ErrUnauthenticated
 	}
@@ -554,12 +560,12 @@ func userByIDForUpdate(ctx context.Context, tx pgx.Tx, id string) (domain.User, 
 func userByProviderSubject(ctx context.Context, tx pgx.Tx, provider domain.Provider, subject string) (domain.User, error) {
 	var user domain.User
 	err := tx.QueryRow(ctx, `
-		SELECT u.id, u.name, u.normalized_email, u.role, u.account_status
+		SELECT u.id, u.name, u.normalized_email, u.role, u.account_status, u.password_change_required
 		FROM login_identities i
 		JOIN users u ON u.id = i.user_id
 		WHERE i.provider = $1 AND i.provider_subject = $2
 		FOR UPDATE OF u
-	`, provider, subject).Scan(&user.ID, &user.Name, &user.NormalizedEmail, &user.Role, &user.Status)
+	`, provider, subject).Scan(&user.ID, &user.Name, &user.NormalizedEmail, &user.Role, &user.Status, &user.PasswordChangeRequired)
 	return user, err
 }
 
@@ -588,8 +594,8 @@ func insertAudit(
 	now time.Time,
 ) error {
 	_, err := tx.Exec(ctx, `
-		INSERT INTO audit_records (actor_user_id, action, target_type, target_id, occurred_at)
-		VALUES (NULLIF($1, '')::uuid, $2, $3, $4, $5)
+		INSERT INTO audit_records (actor_user_id, action, target_type, target_id, details, occurred_at)
+		VALUES (NULLIF($1, '')::uuid, $2, $3, $4, jsonb_build_object('result', 'success'), $5)
 	`, actorID, action, targetType, targetID, now)
 	if err != nil {
 		return fmt.Errorf("insert identity audit record: %w", err)

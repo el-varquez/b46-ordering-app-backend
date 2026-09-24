@@ -207,7 +207,25 @@ func (*logoutStore) UserView(context.Context, string) (domain.UserView, error) {
 func (*logoutStore) BootstrapAdmin(context.Context, string, string, string, time.Time) (domain.User, error) {
 	return domain.User{}, nil
 }
+func (*logoutStore) RecoverAdminPassword(context.Context, string, string, time.Time) (domain.User, error) {
+	return domain.User{}, nil
+}
 func (*logoutStore) DisableUser(context.Context, string, string, time.Time) error { return nil }
+func (*logoutStore) ListCashiers(context.Context, domain.AccountStatus) ([]domain.UserView, error) {
+	return nil, nil
+}
+func (*logoutStore) CashierView(context.Context, string) (domain.UserView, error) {
+	return domain.UserView{}, nil
+}
+func (*logoutStore) SetCashierStatus(context.Context, string, string, domain.AccountStatus, time.Time) (domain.UserView, error) {
+	return domain.UserView{}, nil
+}
+func (*logoutStore) ResetCashierPassword(context.Context, string, string, string, time.Time) (domain.UserView, error) {
+	return domain.UserView{}, nil
+}
+func (*logoutStore) ChangeOwnPassword(context.Context, string, string, string, string, time.Time) error {
+	return nil
+}
 
 type stubHasher struct{}
 
