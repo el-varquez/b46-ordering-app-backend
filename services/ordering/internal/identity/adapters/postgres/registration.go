@@ -173,6 +173,9 @@ func (store *Store) DeleteExpiredRegistrations(ctx context.Context, now time.Tim
 	if _, err := store.pool.Exec(ctx, `DELETE FROM registration_rate_buckets WHERE window_started_at < $1`, now.Add(-2*time.Hour)); err != nil {
 		return fmt.Errorf("delete registration rate buckets: %w", err)
 	}
+	if _, err := store.pool.Exec(ctx, `DELETE FROM pending_cashier_registrations WHERE expires_at <= $1 OR consumed_at < $1`, now); err != nil {
+		return fmt.Errorf("delete expired cashier registrations: %w", err)
+	}
 	return nil
 }
 

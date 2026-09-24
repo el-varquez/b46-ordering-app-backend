@@ -106,8 +106,9 @@ func seedPasswordUser(
 	}
 	var user domain.User
 	err = pool.QueryRow(context.Background(), `
-		INSERT INTO users (name, normalized_email, role, account_status)
-		VALUES ($1, lower($2) || '-' || gen_random_uuid() || '@example.test', $3, $4)
+		INSERT INTO users (name, normalized_email, role, account_status, email_verified_at)
+		VALUES ($1, lower($2) || '-' || gen_random_uuid() || '@example.test', $3, $4,
+			CASE WHEN $3 = 'CASHIER' THEN now() ELSE NULL END)
 		RETURNING id, name, normalized_email, role, account_status
 	`, "Integration "+string(role), string(role), role, status).Scan(
 		&user.ID, &user.Name, &user.NormalizedEmail, &user.Role, &user.Status,

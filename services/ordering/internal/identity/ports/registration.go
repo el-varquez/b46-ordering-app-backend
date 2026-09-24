@@ -12,6 +12,9 @@ type RegistrationStore interface {
 	ResendRegistration(context.Context, string, string, string, time.Time, time.Time) (string, bool, error)
 	VerifyRegistration(context.Context, string, string, time.Time) (domain.User, error)
 	DeleteExpiredRegistrations(context.Context, time.Time) error
+	BeginCashierRegistration(context.Context, domain.PendingRegistration, string, string, time.Time) error
+	ResendCashierRegistration(context.Context, string, string, string, string, time.Time, time.Time) (string, error)
+	VerifyCashierRegistration(context.Context, string, string, string, time.Time) (domain.UserView, error)
 }
 
 type VerificationMailer interface {
